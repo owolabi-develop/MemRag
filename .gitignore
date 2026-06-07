@@ -1,3 +1,7 @@
 backend/.env
 backend/.venv
+backend/src/connection/__pycache__/
+Backend/src/embeddings/__pycache__/
+Backend/src/llm/__pycache__/
+Backend/src/vectordb/__pycache__/
 frontend/node_modules
