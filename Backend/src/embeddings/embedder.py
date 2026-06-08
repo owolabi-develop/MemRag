@@ -1,6 +1,7 @@
 from src.llm.llm_client import client
+import asyncio
 from google.genai import types
-
+from sentence_transformers import SentenceTransformer
 
 
 async def google_embedding(content:str,model_output_dimensionality:int=1536):    
@@ -11,3 +12,18 @@ async def google_embedding(content:str,model_output_dimensionality:int=1536):
         output_dimensionality=model_output_dimensionality))
     [embedding_obj] = result.embeddings
     return embedding_obj.values
+
+
+
+
+async def hug_embedding(content: str):
+    model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
+    loop = asyncio.get_running_loop()
+
+    embedding = await loop.run_in_executor(
+        None,
+        model.encode,
+        content
+    )
+
+    return embedding.tolist()

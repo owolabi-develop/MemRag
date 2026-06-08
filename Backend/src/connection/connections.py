@@ -2,6 +2,11 @@ import asyncpg
 from dotenv import load_dotenv
 import os
 load_dotenv(override=True)
+from pgvector.asyncpg import register_vector
+
+
+async def init_connection(conn):
+    await register_vector(conn)
 
 
 async def get_db_pool():
@@ -10,7 +15,8 @@ async def get_db_pool():
                                 password=os.getenv("DB_PASSWORD"),
                                 database=os.getenv("DB_NAME"),
                                 host=os.getenv("DB_HOST"),
-                                port=os.getenv("DB_PORT")
+                                port=os.getenv("DB_PORT"),
+                                init=init_connection
                                 )
         print("Connected successfully")
         version = await pool.fetchval("SELECT version();")

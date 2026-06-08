@@ -12,6 +12,7 @@ class StoreManager:
         """
         self.client = client
     async def create_db(self):
+         
         table_names = {"knowledge_base":"SEMANTIC_MEMORY",
               "workflow":"WORKFLOW_MEMORY",
               "toolbox":"TOOLBOX_MEMORY",
@@ -54,6 +55,7 @@ class StoreManager:
            ## DROP TABLE IF EXISTS 
             try:
                 await con.execute(f"DROP TABLE IF EXISTS {table_name}")
+                await con.execute("CREATE EXTENSION vector;")
             except:
                 pass
             await con.execute(f"""
@@ -61,7 +63,7 @@ class StoreManager:
                             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                             content text NOT NULL,
                             metadata JSONB,
-                            embedding vector(1536)
+                            embedding vector(768)
                              );
                         """)
             await con.execute(f"""
