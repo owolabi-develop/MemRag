@@ -69,6 +69,9 @@ class StoreManager:
             await con.execute(f"""
                         CREATE INDEX ON {table_name} USING hnsw (embedding vector_cosine_ops);
                         """)
+            await con.execute(f"""
+                             CREATE INDEX ON {table_name} USING GIN (to_tsvector('english', content));
+                            """)
             
         print(f" Table {table_name} created successfully with indexes")
         
