@@ -2,7 +2,7 @@
 class StoreManager:
     """Manages all stores (vector stores and SQL tables) with getter methods for easy access."""
     
-    def __init__(self, client):
+    def __init__(self, pool):
         """
         Initialize all stores.
         
@@ -10,10 +10,12 @@ class StoreManager:
             client: postgres database connection
 
         """
-        self.client = client
+        self.pool = pool
     async def create_db(self):
          
-        table_names = {"knowledge_base":"SEMANTIC_MEMORY",
+        table_names = {"knowledge_base":["SEMANTIC_MEMORY_SALES",
+                                         "SEMANTIC_MEMORY_INSURANCE",
+                                         "SEMANTIC_MEMORY_POLICY","SEMANTIC_MEMORY_TECHNICAL"],
               "workflow":"WORKFLOW_MEMORY",
               "toolbox":"TOOLBOX_MEMORY",
               "entity":"ENTITY_MEMORY",
@@ -21,9 +23,11 @@ class StoreManager:
               }
         
         # Initialize all vector stores
-        self._knowledge_base_vs = await self.create_vector_store(
-            table_name=table_names['knowledge_base'],
-        )
+        for kb_name in table_names['knowledge_base']:
+            self._knowledge_base_vs= await self.create_vector_store(
+                table_name=kb_name,
+            )
+        
         
         self._workflow_vs = await self.create_vector_store(
             table_name=table_names['workflow'],
@@ -51,7 +55,7 @@ class StoreManager:
         
     async def create_vector_store(self,table_name):
     
-        async with self.client.acquire() as con:
+        async with self.pool.acquire() as con:
            ## DROP TABLE IF EXISTS 
             try:
                 await con.execute(f"DROP TABLE IF EXISTS {table_name}")
@@ -81,7 +85,7 @@ class StoreManager:
         If the table already exists, returns the table name without recreating it.
         """
        
-        async with self.client.acquire() as con:
+        async with self.pool.acquire() as con:
             try:
                await con.execute(f"DROP TABLE IF EXISTS {table_name}")
             except:
@@ -125,7 +129,7 @@ class StoreManager:
         Args:
             table_name: Name of the table to create
         """
-        async with self.client.acquire() as con:
+        async with self.pool.acquire() as con:
             # Drop table if exists
             try:
                 await con.execute(f"DROP TABLE IF EXISTS {table_name}")

@@ -4,17 +4,17 @@ from src.embeddings.embedder import hug_embedding
 
 
 
-async def hybrid_search_retriever(query:str, k: int=5):
-    sql = """
+async def hybrid_search_retriever(query:str, table_name: str="semantic_memory", k: int=5):
+    sql = f"""
             WITH semantic_search AS (
                 SELECT id,content, RANK () OVER (ORDER BY embedding <=> $2) AS rank
-                FROM semantic_memory
+                FROM {table_name}
                 ORDER BY embedding <=> $2
                 LIMIT 10
             ),
             keyword_search AS (
                 SELECT id,content, RANK () OVER (ORDER BY ts_rank_cd(to_tsvector('english', content), query) DESC)
-                FROM semantic_memory, plainto_tsquery('english', $1) query
+                FROM {table_name}, plainto_tsquery('english', $1) query
                 WHERE to_tsvector('english', content) @@ query
                 ORDER BY ts_rank_cd(to_tsvector('english', content), query) DESC
                 LIMIT 10
