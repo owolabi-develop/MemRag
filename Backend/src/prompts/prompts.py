@@ -1,19 +1,21 @@
 
 
 
-QUERY_REWRITE_TEMPLATE="""
+QUERY_REWRITE_EXPAND_TEMPLATE="""
 # Role
 you are a professional sales training assistant
 
 # Instructions
-Reformulating the original user query to make it more suitable for
+ - Reformulating the original user query to make it more suitable for
 retrieval
+ -  focuses on broadening the original query to capture more relevant
+information
 
 # Context
 USER QUERY:{user_query}
 
 # Output format
-return only the Reformulated user query without additional context
+return only the Reformulated and broadening user query without additional context
 """
 
 SALE_AGENT_TEMPLATE ="""
@@ -29,4 +31,10 @@ Retrieved context:
 
 USER QUERY:
 {user_query}
+"""
+
+
+COMPRESS_INSTRUCTION_TEMPLATE = """
+Write a high-quality answer for the given question using only 
+the provided search results (some of which might be irrelevant
 """

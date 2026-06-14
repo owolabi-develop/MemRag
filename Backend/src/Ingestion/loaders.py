@@ -6,7 +6,7 @@ import json
 from src.embeddings.embedder import hug_embedding
 from src.connection.connections import get_db_pool
 
-async def load_document(file):
+async def load_document(file,table_name : str="SEMANTIC_MEMORY_SALES"):
     reader = PdfReader(file)
     meta = reader.metadata
     pages = []
@@ -46,7 +46,7 @@ async def load_document(file):
         
         async with pool.acquire() as con:
                 await con.execute(f"""
-                    INSERT INTO SEMANTIC_MEMORY (content, metadata, embedding)
+                    INSERT INTO {table_name} (content, metadata, embedding)
                     VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE 
                     SET embedding = EXCLUDED.embedding;
                     """,_chunk['text'], json.dumps(_chunk['metadata']),embedding)
