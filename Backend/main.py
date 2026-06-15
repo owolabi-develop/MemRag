@@ -1,12 +1,11 @@
-from fastapi import FastAPI,Form
+from fastapi import FastAPI,Form,UploadFile
 from typing import Annotated
 from fastapi.middleware.cors import CORSMiddleware
 from src.tools.tool import register_common_tools
 from src.memory.memory_manager import MemoryManager
 from src.agent_call import call_agent
 import uuid
-
-app = FastAPI(title="Mem Agent",
+app = FastAPI(title="Mem Agentic Rag",
               summary="Agentic Rag with advance memory with semantic tool management")
 
 # CORS (Cross-Origin Resource Sharing) config
@@ -40,14 +39,14 @@ async def load_conversation():
     return {"conversation_history":conversations}
 
 @app.post("/chat")
-async def chatAgent(user_query: Annotated[str, Form()]):
-    thread_id = 5000
+async def chatAgent(user_query: Annotated[str, Form()],thread_id: Annotated[str, Form()]):
     res = await call_agent(user_query,thread_id)
     return {"response":res}
 
 
 @app.post("/upload/documents")
-async def upload_documents(user_query: Annotated[str, Form()]):
-    pow
+async def upload_documents(sales: UploadFile,insurance: UploadFile,
+                           policy: UploadFile,technical: UploadFile):
+    pass
 
 
