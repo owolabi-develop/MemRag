@@ -1,6 +1,6 @@
 from src.connection.connections import get_db_pool
 from src.embeddings.embedder import hug_embedding
-
+from src.prompts.compress_prompt import compress_prompt
 
 
 
@@ -35,6 +35,8 @@ async def hybrid_search_retriever(query:str, table_name: str="semantic_memory", 
     async with pool.acquire() as con:
         results = await con.fetch(sql, query, embedding, k)
     result ="\n".join([f"Context: \n {content['content']}" for content in results])
-    return result
+    
+    compress_result = await compress_prompt(result,query)
+    return compress_result
         
        

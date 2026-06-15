@@ -1,44 +1,15 @@
 from datetime import datetime
-from tavily import TavilyClient
 import os
 from src.connection.connections import get_db_pool
-from src.config.config import manager
 from .toolbox import ToolBox
 from src.utils.helper import summarise_context_window, summarize_conversation
 from src.vectordb.vectordb import StoreManager
 from src.retrieval.retriever import hybrid_search_retriever
+from src.memory.memory_manager import MemoryManager
+
+manager = MemoryManager()
 
 tool= ToolBox(manager)
-
-
-tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
-
-async def search_tavily(query: str, max_results: int = 5):
-    """
-    Use this function to search the web and store the results in the knowledge base.
-    """
-    response = tavily_client.search(query=query, max_results=max_results)
-    results = response.get("results", [])
-
-    # Write each result to the knowledge base
-    for result in results:
-        # Create the text content to embed
-        text = f"Title: {result.get('title', '')}\nContent: {result.get('content', '')}\nURL: {result.get('url', '')}"
-        
-        # Create metadata
-        metadata = {
-            "title": result.get("title", ""),
-            "url": result.get("url", ""),
-            "score": result.get("score", 0),
-            "source_type": "tavily_search",
-            "query": query,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        # Write to knowledge base
-        await manager.write_knowledge_base(text, metadata)
-
-    return results
 
 
 async def read_toolbox(query: str, k: int = 3) -> list[str]:
@@ -62,9 +33,7 @@ async def read_toolbox(query: str, k: int = 3) -> list[str]:
         including their names, descriptions, and parameter schemas.
     
     Example queries:
-        - "search for academic papers on machine learning"
         - "fetch and store document content"
-        - "get the current date and time"
         - "summarize long text and save to memory"
     """
     return await manager.read_toolbox(query, k=k)
@@ -112,28 +81,63 @@ async def summarize_and_store(text: str, thread_id: str = None) -> str:
             
 
 async def read_knowledge_base_sales(query: str, k: int = 3) -> str:
-    results = await hybrid_search_retriever(query,table_name="semantic_memory_sales")
+    """
+        Search for sale documents.
+        Args:
+            query: contain sale document topic 
+            k: Number of relevant tools to return (default: 5)
+        
+        Returns:
+          document contain sale details
+            
+        """
+
+    results = await hybrid_search_retriever(query,table_name="semantic_memory_sales",k=k)
     return results
 
 
 async def read_knowledge_base_insurance(query: str, k: int = 3) -> str:
-      results = await hybrid_search_retriever(query,table_name="semantic_memory_insurance")
-      return results
+    """
+      Search for insurance documents.
+            Args:
+                query: contain insurance document topic 
+                k: Number of relevant tools to return (default: 5)
+            
+            Returns:
+              document contain insurance details
+    """
+    results = await hybrid_search_retriever(query,table_name="semantic_memory_insurance",k=k)
+    return results
 
 
 async def read_knowledge_base_policy(query: str, k: int = 3) -> str:
-    results = await hybrid_search_retriever(query,table_name="semantic_memory_policy")
+    """
+          Search for policy documents.
+                Args:
+                    query: contain policy document topic 
+                    k: Number of relevant tools to return (default: 5)
+                
+                Returns:
+                  document contain policy details
+        """
+    results = await hybrid_search_retriever(query,table_name="semantic_memory_policy",k=k)
     return results
 
 async def read_knowledge_base_technical(query: str, k: int = 3) -> str:
-    results = await hybrid_search_retriever(query,table_name="semantic_memory_technical")
+  
+    """
+        Search for technical documents.
+            Args:
+                query: contain technical document topic 
+                k: Number of relevant tools to return (default: 5)
+            
+            Returns:
+                document contain technical details
+        """
+    results = await hybrid_search_retriever(query,table_name="semantic_memory_technical",k=k)
     return results
 
-async def register_common_tools():
-    
-    pool = await get_db_pool() 
-    await StoreManager(pool).create_db()
-    
+async def register_common_tools(): 
     print("registering common tool and keep reference for lookup")
     await tool.register_tool(read_knowledge_base_technical)
     await tool.register_tool(read_knowledge_base_insurance)
@@ -145,8 +149,13 @@ async def register_common_tools():
     await tool.register_tool(expand_summary)
     
 
-TOOL_BY_NAME = {"search_tavily":search_tavily,
+TOOL_BY_NAME = {
                 "summarize_and_store":summarize_and_store,
                 "summarize_conversation":summarize_conversation,
                 "read_toolbox":read_toolbox,
-                "expand_summary":expand_summary}
+                "expand_summary":expand_summary,
+                "read_knowledge_base_insurance":read_knowledge_base_insurance,
+                "read_knowledge_base_policy":read_knowledge_base_policy,
+                "read_knowledge_base_sales":read_knowledge_base_sales,
+                "read_knowledge_base_technical":read_knowledge_base_technical
+                }

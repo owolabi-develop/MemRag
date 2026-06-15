@@ -8,6 +8,8 @@ from google.genai import errors,types
 import uuid
 from src.llm.llm_client import client
 
+from src.connection.connections import get_db_pool
+
 
 
 
@@ -44,7 +46,8 @@ class ToolBox:
         return embedding
     
      async def _check_tool_exist_in_db(self,tool_name:str):
-            async with self.memory_manager.pool.acquire() as con:
+            pool = await get_db_pool()
+            async with pool.acquire() as con:
                 results = await con.fetchrow(f"""
                             SELECT count(*) FROM {self.memory_manager.toolbox_vs}
                             where metadata ->> 'name' = $1

@@ -9,6 +9,10 @@ import uuid
 from typing import List, Optional,Literal
 from pprint import pprint
 from src.llm.llm_client import client   
+from src.connection.connections import get_db_pool
+from pgvector.asyncpg import register_vector
+import asyncpg
+
 
 class Entity(BaseModel):
     name: str = Field(description="The name of the entity extracted.")
@@ -33,34 +37,53 @@ class MemoryManager:
     - Entity: People, places, systems (Vector store)
     - Summary: Storing compressed context window
     """
+    pool = None
     
     def __init__(
         self,
-        pool,
-        conversation_table_name: str,
-        knowledge_base_vs_name,
-        workflow_vs_name,
-        toolbox_vs_name,
-        entity_vs_name,
-        summary_vs_name,
-        tool_log_table_name: str | None = None
     ):
-        self.pool = pool
-        self.conversation_table = conversation_table_name
-        self.knowledge_base_vs = knowledge_base_vs_name
-        self.workflow_vs = workflow_vs_name
-        self.toolbox_vs = toolbox_vs_name
-        self.entity_vs = entity_vs_name
-        self.summary_vs = summary_vs_name
-        self.tool_log_table = tool_log_table_name
+        self.conversation_table = "CONVERSATIONAL_MEMORY"
+        self.workflow_vs ="WORKFLOW_MEMORY"
+        self.toolbox_vs = "TOOLBOX_MEMORY"
+        self.entity_vs = "ENTITY_MEMORY"
+        self.summary_vs = "SUMMARY_MEMORY"
+        self.tool_log_table = "TOOL_LOG_MEMORY"
         self.llm_client = client
         self.model = "gemini-3.5-flash"
         
+    @classmethod
+    async def setup_codec(cls,conn):
+        for json_type in ['json', 'jsonb']:
+            await conn.set_type_codec(
+                json_type,
+                encoder=json.dumps,
+                decoder=json.loads,
+                schema='pg_catalog'
+            )
+            
+    @classmethod
+    async def init_connection(cls,conn):
+        await register_vector(conn)
+        await cls.setup_codec(conn)
+        
+    @classmethod
+    async def get_pool(cls):
+        if cls.pool is None:
+            cls.pool = await asyncpg.create_pool(
+                user=os.getenv("DB_USER"),
+                password=os.getenv("DB_PASSWORD"),
+                database=os.getenv("DB_NAME"),
+                host=os.getenv("DB_HOST"),
+                port=os.getenv("DB_PORT"),
+                init=cls.init_connection
+            )
+            print("Connected successfully")
+        return cls.pool
+        
         
     async def write_conversational_memory(self, content: str, role: str, thread_id: str) -> str:
-        
-        
-        async with self.pool.acquire() as con:
+        pool = await MemoryManager.get_pool()
+        async with pool.acquire() as con:
             record_id = await con.fetchval("""
             INSERT INTO conversational_memory
             (thread_id, role, content, metadata, con_timestamp)
@@ -71,8 +94,8 @@ class MemoryManager:
         return record_id
     
     async def read_conversational_memory(self,thread_id: str, limit: int = 10) -> str:
-        
-        async with self.pool.acquire() as con:
+        pool = await MemoryManager.get_pool()
+        async with pool.acquire() as con:
             
             results = await con.fetch(f"""
                         SELECT content, role, con_timestamp FROM {self.conversation_table}
@@ -96,7 +119,8 @@ class MemoryManager:
     
     async def load_conversational_memory_history(self,):
         """ load all conversational memory history"""
-        async with self.pool.acquire() as con:
+        pool = await MemoryManager.get_pool()
+        async with pool.acquire() as con:
             results = await con.fetch(f"""
                         SELECT id, role, content, created_at FROM {self.conversation_table}
                         ORDER BY created_at ASC
@@ -114,7 +138,8 @@ class MemoryManager:
     async def mark_as_summarized(self, thread_id: str, summary_id: str):
         """Mark all unsummarized messages in a thread as summarized."""
         thread_id = str(thread_id)
-        async with self.pool.acquire() as con:
+        pool = await MemoryManager.get_pool()
+        async with pool.acquire() as con:
             await con.execute(f"""
                 UPDATE {self.conversation_table}
                 SET summary_id = $1
@@ -125,19 +150,21 @@ class MemoryManager:
         
     async def add_text_to_vs(self, table_name: str, content: str ,metadata:dict):
         embedding = await hug_embedding(content)
-        async with self.pool.acquire() as con:
+        pool = await MemoryManager.get_pool()
+        async with pool.acquire() as con:
             await con.execute(f"""
                         INSERT INTO {table_name} (content, metadata, embedding)
                         VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE 
                         SET embedding = EXCLUDED.embedding;
-                        """,content, json.dumps(metadata),embedding)
+                        """,content, metadata,embedding)
     
         print(f"upserting document to table: {table_name}")
         
     async def similarity_search_vs(self,table_name: str, query: str, k: int =3):
         ## similarity search for all vs method
         embedding = await hug_embedding(query)
-        async with self.pool.acquire() as con:
+        pool = await MemoryManager.get_pool()
+        async with pool.acquire() as con:
             result = await con.fetch(f"""
                         SELECT content, metadata FROM {table_name}
                         ORDER BY embedding <=> $1
@@ -147,8 +174,8 @@ class MemoryManager:
         
     async def similarity__with_filter_search_vs(self,table_name: str,query:str, filters: dict, k: int =3):
         embedding = await hug_embedding(query)
-        
-        async with self.pool.acquire() as con:
+        pool = await MemoryManager.get_pool()
+        async with pool.acquire() as con:
             result = await con.fetch(f"""
                         SELECT content, metadata FROM {table_name}
                         where metadata @> $1
@@ -157,31 +184,7 @@ class MemoryManager:
                         """,json.dumps(filters),embedding,k)
             
             return result 
-        
-    async def write_knowledge_base(self, text: str | list[str], metadata: dict | list[dict]):
-        """
-        Store knowledge-base content with metadata.
-
-        Supports:
-        - Single record: text=str, metadata=dict
-        - Batch insert: text=list[str], metadata=list[dict]
-        """
-        if isinstance(text, list):
-            texts = [str(t) for t in text]
-            if isinstance(metadata, list):
-                metadatas = metadata
-            else:
-                metadatas = [metadata for _ in texts]
-
-            if len(texts) != len(metadatas):
-                raise ValueError(
-                    f"Knowledge-base batch length mismatch: {len(texts)} texts vs {len(metadatas)} metadata rows"
-                )
-            await self.add_text_to_vs(self.knowledge_base_vs,texts, metadatas)
-            return
-
-        await self.add_text_to_vs(self.knowledge_base_vs,[str(text)], [metadata if isinstance(metadata, dict) else {}])
-        
+            
     async def write_toolbox(self,text:str, metadata: dict):
             """ write too details to db"""
             await self.add_text_to_vs(self.toolbox_vs,text, metadata)
@@ -302,18 +305,18 @@ class MemoryManager:
         preview = result_str.encode("utf-8")[:2000].decode("utf-8", errors="ignore")
 
         metadata_str = json.dumps(metadata, ensure_ascii=False) if metadata else "{}"
-
-        async with self.pool.acquire() as con:
+        pool = await MemoryManager.get_pool()
+        async with pool.acquire() as con:
             log_id = await con.fetchval(f"""
                 INSERT INTO {self.tool_log_table}
                     (thread_id, tool_call_id, tool_name, tool_args, result, result_preview, status, error_message, metadata, log_timestamp)
                 VALUES
                     ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_TIMESTAMP)
                 RETURNING id
-            """, (thread_id, tool_call_id,tool_name,
+            """, thread_id, tool_call_id,tool_name,
                 tool_args_str, result_str, preview,
                 status, error_message, metadata_str,
-            ))
+            )
            
         return log_id
 
@@ -323,14 +326,15 @@ class MemoryManager:
             return []
 
         thread_id = str(thread_id)
-        async with self.pool.acquire() as con:
+        pool = await MemoryManager.get_pool()
+        async with pool.acquire() as con:
             rows = await con.fetch(f"""
                 SELECT id, tool_call_id, tool_name, tool_args, result_preview, status, error_message, metadata, log_timestamp
                 FROM {self.tool_log_table}
                 WHERE thread_id = $1
                 ORDER BY timestamp DESC
                 FETCH FIRST $2 ROWS ONLY
-            """, (thread_id, limit))
+            """, thread_id, limit)
 
         logs = []
         for log_id, tool_call_id, tool_name, tool_args, result_preview, status, error_message, metadata, ts in rows:
@@ -381,7 +385,7 @@ class MemoryManager:
             return entities
         else:
             # Store single entity directly
-            await self.entity_vs.add_texts(
+            await self.add_text_to_vs(self.entity_vs,
                 [f"{name} ({entity_type}): {description}"],
                 [{"name": name, "type": entity_type, "description": description}]
             )

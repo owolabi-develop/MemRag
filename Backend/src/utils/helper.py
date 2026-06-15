@@ -3,8 +3,9 @@ MODEL_TOKEN_LIMITS = {
     "gemini-3.5-flash": 256000,
 }
 from src.llm.llm_client import client
-from src.config.config import manager as memory_manager
-
+from src.connection.connections import get_db_pool
+from src.memory.memory_manager import MemoryManager
+memory_manager = MemoryManager()
 # Context window calculator - returns percentage used
 async def calculate_context_usage(context: str, model: str = "gemini-3.5-flash") -> dict:
     """Calculate context window usage as percentage."""
@@ -117,14 +118,14 @@ async def summarize_conversation(thread_id: str) -> dict:
     thread_id = str(thread_id)
 
     # Read raw unsummarized conversation units (IDs + content)
-    with memory_manager.conn.cursor() as cur:
-        cur.execute(f"""
+    pool = await  MemoryManager.get_pool()
+    async with pool.acquire() as con:
+        rows = await con.fetch(f"""
             SELECT id, role, content, con_timestamp
-            FROM {memory_manager.conversation_table}
-            WHERE thread_id = %s AND summary_id IS NULL
+            FROM CONVERSATIONAL_MEMORY
+            WHERE thread_id = $1 AND summary_id IS NULL
             ORDER BY con_timestamp ASC
-        """, {"thread_id": thread_id})
-        rows = cur.fetchall()
+        """, thread_id)
 
     if not rows:
         return {"status": "nothing_to_summarize"}
@@ -147,13 +148,12 @@ async def summarize_conversation(thread_id: str) -> dict:
     summary_id = result["id"]
 
     # Mark the exact source rows with the generated summary_id
-    with memory_manager.conn.cursor() as cur:
-        cur.executemany(f"""
-            UPDATE {memory_manager.conversation_table}
-            SET summary_id = %s
-            WHERE id = %s AND summary_id IS NULL
+    async with pool.acquire() as con:
+        await con.executemany(f"""
+            UPDATE CONVERSATIONAL_MEMORY
+            SET summary_id = $1
+            WHERE id = $2 AND summary_id IS NULL
         """, [{"summary_id": summary_id, "id": msg_id} for msg_id in message_ids])
-    memory_manager.conn.commit()
 
     result["num_messages_summarized"] = len(message_ids)
 
