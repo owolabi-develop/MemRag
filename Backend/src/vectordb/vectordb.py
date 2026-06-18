@@ -13,19 +13,15 @@ class StoreManager:
         self.pool = pool
     async def create_db(self):
          
-        table_names = {"knowledge_base":["SEMANTIC_MEMORY_SALES",
-                                         "SEMANTIC_MEMORY_INSURANCE",
-                                         "SEMANTIC_MEMORY_POLICY","SEMANTIC_MEMORY_TECHNICAL"],
-              "workflow":"WORKFLOW_MEMORY",
+        table_names = {"knowledge_base":"SEMANTIC_MEMORY",
+             "workflow":"WORKFLOW_MEMORY",
               "toolbox":"TOOLBOX_MEMORY",
               "entity":"ENTITY_MEMORY",
               "summary":"SUMMARY_MEMORY"
               }
         
-        # Initialize all vector stores
-        for kb_name in table_names['knowledge_base']:
-            self._knowledge_base_vs= await self.create_vector_store(
-                table_name=kb_name,
+        self._knowledge_base_vs= await self.create_vector_kb_store(
+                table_name=table_names['knowledge_base'],
             )
         
         
@@ -78,6 +74,38 @@ class StoreManager:
                             """)
             
         print(f" Table {table_name} created successfully with indexes")
+        
+    async def create_vector_kb_store(self,table_name):
+            
+                async with self.pool.acquire() as con:
+                   ## DROP TABLE IF EXISTS 
+                    try:
+                        await con.execute(f"DROP TABLE IF EXISTS {table_name}")
+                        await con.execute("CREATE EXTENSION vector;")
+                    except:
+                        pass
+                    await con.execute(f"""
+                                CREATE TABLE {table_name} (
+                                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                                    content text NOT NULL,
+                                    department varchar(20) NOT NULL,
+                                    tenant_id UUID DEFAULT gen_random_uuid(),
+                                    metadata JSONB,
+                                    embedding vector(768)
+                                     );
+                                """)
+                    await con.execute(f"""
+                                CREATE INDEX ON {table_name} USING hnsw (embedding vector_cosine_ops);
+                                """)
+                    await con.execute(f"""
+                                     CREATE INDEX ON {table_name} USING GIN (to_tsvector('english', content));
+                                    """)
+                    await con.execute(f"""
+                                    CREATE INDEX idx_{table_name.lower()}_department ON {table_name}(department)
+                                """)
+                    
+                    
+                print(f" Table {table_name} created successfully with indexes")
         
     async def create_tool_log_table(self,table_name: str = "TOOL_LOG_MEMORY"):
         """

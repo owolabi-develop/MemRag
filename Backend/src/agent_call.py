@@ -9,11 +9,10 @@ from src.connection.connections import get_db_pool
 from src.memory.memory_manager import MemoryManager
 from src.tools.tool import (TOOL_BY_NAME,summarize_conversation, 
                             summarize_and_store, read_toolbox, 
-                            read_knowledge_base_insurance,read_knowledge_base_policy,
-                            read_knowledge_base_sales,read_knowledge_base_technical,expand_summary
+                            read_knowledge_base,expand_summary
         )
 
-
+ 
 # register all tool so the agent can call them
 
 
@@ -45,7 +44,7 @@ async def call_gemini_chat(messages: list, tools: list = None, model: str = "gem
         )
     return res
 
-async def call_agent(user_query: str, thread_id: str = "1", max_iterations: int = 5) -> str:
+async def call_agent(user_query: str, department: str | list[str], tenant_id: str, thread_id: str = "1", max_iterations: int = 5) -> str:
     """Agent loop with context window monitoring and summarization."""
     
     ## initialize the memory manager
@@ -82,7 +81,7 @@ async def call_agent(user_query: str, thread_id: str = "1", max_iterations: int 
         usage = await calculate_context_usage(memory_context)
        
     # Now prepend the query (always preserved, never summarized)
-    context = f"# Question\n{query}\n\n{memory_context}"
+    context = f"# Question\n{query}\n\n Department{department}\n\n #Tenant ID{tenant_id}\n\n{memory_context}"
 
     
     # Get tools

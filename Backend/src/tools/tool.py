@@ -80,11 +80,12 @@ async def summarize_and_store(text: str, thread_id: str = None) -> str:
     return f"Stored as [Summary ID: {result['id']}] {result['description']}"
             
 
-async def read_knowledge_base_sales(query: str, k: int = 3) -> str:
+async def read_knowledge_base(query: str, department: str | list[str],
+    tenant_id: str, k: int = 3) -> str:
     """
-        Search for sale documents.
+        Search for sale, insurance, policy and technical documents.
         Args:
-            query: contain sale document topic 
+            query: contain sale, insurance, policy and technical document topic 
             k: Number of relevant tools to return (default: 5)
         
         Returns:
@@ -92,57 +93,19 @@ async def read_knowledge_base_sales(query: str, k: int = 3) -> str:
             
         """
 
-    results = await hybrid_search_retriever(query,table_name="semantic_memory_sales",k=k)
+    results = await hybrid_search_retriever(query, department, tenant_id, table_name="semantic_memory_sales",k=k)
     return results
 
 
-async def read_knowledge_base_insurance(query: str, k: int = 3) -> str:
-    """
-      Search for insurance documents.
-            Args:
-                query: contain insurance document topic 
-                k: Number of relevant tools to return (default: 5)
-            
-            Returns:
-              document contain insurance details
-    """
-    results = await hybrid_search_retriever(query,table_name="semantic_memory_insurance",k=k)
-    return results
 
 
-async def read_knowledge_base_policy(query: str, k: int = 3) -> str:
-    """
-          Search for policy documents.
-                Args:
-                    query: contain policy document topic 
-                    k: Number of relevant tools to return (default: 5)
-                
-                Returns:
-                  document contain policy details
-        """
-    results = await hybrid_search_retriever(query,table_name="semantic_memory_policy",k=k)
-    return results
 
-async def read_knowledge_base_technical(query: str, k: int = 3) -> str:
-  
-    """
-        Search for technical documents.
-            Args:
-                query: contain technical document topic 
-                k: Number of relevant tools to return (default: 5)
-            
-            Returns:
-                document contain technical details
-        """
-    results = await hybrid_search_retriever(query,table_name="semantic_memory_technical",k=k)
-    return results
+
+
 
 async def register_common_tools(): 
     print("registering common tool and keep reference for lookup")
-    await tool.register_tool(read_knowledge_base_technical)
-    await tool.register_tool(read_knowledge_base_insurance)
-    await tool.register_tool(read_knowledge_base_policy)
-    await tool.register_tool(read_knowledge_base_sales)
+    await tool.register_tool(read_knowledge_base)
     await tool.register_tool(summarize_and_store)
     await tool.register_tool(summarize_conversation)
     await tool.register_tool(read_toolbox)
@@ -154,8 +117,5 @@ TOOL_BY_NAME = {
                 "summarize_conversation":summarize_conversation,
                 "read_toolbox":read_toolbox,
                 "expand_summary":expand_summary,
-                "read_knowledge_base_insurance":read_knowledge_base_insurance,
-                "read_knowledge_base_policy":read_knowledge_base_policy,
-                "read_knowledge_base_sales":read_knowledge_base_sales,
-                "read_knowledge_base_technical":read_knowledge_base_technical
+                "read_knowledge_base_insurance":read_knowledge_base,
                 }

@@ -545,7 +545,7 @@ Compressed snapshots of older conversation windows preserved to retain long-rang
             "num_steps": len(steps),
             "timestamp": datetime.now().isoformat()
         }
-        await self.add_text_to_vs(self.workflow_vs,[text], metadata)
+        await self.add_text_to_vs(self.workflow_vs,text, metadata)
     
     async def read_workflow(self, query: str, k: int = 3) -> str:
         """Search for similar past workflows with at least 1 step."""

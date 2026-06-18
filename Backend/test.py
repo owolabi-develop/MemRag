@@ -9,15 +9,20 @@ from pprint import pprint
 from src.agent_call import call_agent
 from src.tools.tool import register_common_tools
 from src.memory.memory_manager import MemoryManager
-
+from unstructured.partition.pdf import partition_pdf
+from unstructured.chunking.title import chunk_by_title
 from src.prompts.compress_prompt import compress_prompt
 
 async def main():
    
-    res = await call_agent("tell me about the debt including the legal notice/action through civil courts")
-   
-    print(res)
-    
+    # res = await call_agent("tell me about the debt including the legal notice/action through civil courts")
+   file = r"C:\Users\user\Desktop\MemRag\Backend\src\sampleDoc\insurance.pdf"
+    # print(res)
+   elements = partition_pdf(
+    filename=file,
+    strategy="hi_res",  # High-resolution extraction for tables/images
+)
+   print(elements)
     
     
    
