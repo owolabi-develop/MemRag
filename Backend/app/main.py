@@ -1,10 +1,11 @@
-from fastapi import FastAPI,Form,UploadFile
+from fastapi import FastAPI,Form,UploadFile,Depends, FastAPI, HTTPException, Query
 from typing import Annotated
 from fastapi.middleware.cors import CORSMiddleware
 from src.tools.tool import register_common_tools
 from src.memory.memory_manager import MemoryManager
 from src.agent_call import call_agent
 import uuid
+from app.db import get_session,init_db
 app = FastAPI(title="Mem Agentic Rag",
               summary="Agentic Rag with advance memory with semantic tool management")
 
@@ -25,8 +26,8 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def on_startup():
-    await register_common_tools()
-    
+    # await register_common_tools()
+    await init_db()
     print("starting")
 
 

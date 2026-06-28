@@ -13,7 +13,7 @@ class StoreManager:
         self.pool = pool
     async def create_db(self):
          
-        table_names = {"knowledge_base":"SEMANTIC_MEMORY",
+        table_names = {"knowledge_base":"  ",
              "workflow":"WORKFLOW_MEMORY",
               "toolbox":"TOOLBOX_MEMORY",
               "entity":"ENTITY_MEMORY",
