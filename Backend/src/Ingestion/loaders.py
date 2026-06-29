@@ -3,15 +3,20 @@ from datetime import datetime
 import json
 from pathlib import Path
 from src.embeddings.embedder import hug_embedding
-from src.connection.connections import get_db_pool
 import pymupdf4llm
 from langchain_text_splitters import MarkdownTextSplitter
+import pymupdf
+from app.dependencies import sessionCreator
+from app.models import Semantic_Memory
+import asyncio
+from app.db import async_session_pool
 
-async def load_document(file, department:str, tenant_id:str, table_name : str="SEMANTIC_MEMORY"):
-    source = Path(file).name
-    print(f"loading document: {source} for department: {department} and tenant_id: {tenant_id}")
-    md_text = pymupdf4llm.to_markdown(file,page_chunks=True)
-    splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=0)
+async def load_document(file, department:str, tenant_id:str):
+    print(f"loading document: {file.filename} for department: {department} and tenant_id: {tenant_id}")
+    content = await file.read()
+    doc = pymupdf.open(stream=content,filetype="pdf")
+    md_text = pymupdf4llm.to_markdown(doc,page_chunks=True)
+    splitter = MarkdownTextSplitter(chunk_size=300, chunk_overlap=0)
     
     # get page data and metadata
     pages = [{"text": page['text'], "metadata":page['metadata']} for page in md_text]
@@ -22,24 +27,29 @@ async def load_document(file, department:str, tenant_id:str, table_name : str="S
         for idx, chunk in enumerate(chunks):
             all_chunks.append(
                 {"text": chunk, 
-                 "metadata":{"source":source, "department": department, "tenant_id": tenant_id, "page_number": page['metadata'].get('page_number'),"title": page['metadata'].get('title'), "chunk_index": idx, "timestamp": datetime.now().isoformat()}
+                 "metadata":{"source":file.filename, "department": department, "tenant_id": str(tenant_id), "page_number": page['metadata'].get('page_number'),"title": page['metadata'].get('title'), "chunk_index": idx, "timestamp": datetime.now().isoformat()}
             })
-    pprint(all_chunks,indent=4)
-    
+   
     # ingest chunk documents and metadata to vector db
-    pool = await get_db_pool()
     print("ingesting documents...")
-    for _chunk in all_chunks:
-        embedding = await hug_embedding(_chunk['text'])
-        
-        async with pool.acquire() as con:
-                await con.execute(f"""
-                    INSERT INTO {table_name} (content,department,tenant_id metadata, embedding)
-                    VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO UPDATE 
-                    SET embedding = EXCLUDED.embedding;
-                    """,_chunk['text'], json.dumps(_chunk['metadata']),embedding)
+    
+    async with async_session_pool() as session:    
+        doc_obj = []
+        for _chunk in all_chunks:
+            emb = await hug_embedding(_chunk['text'])
+            doc_obj.append(
+                Semantic_Memory(
+                    department=department,
+                    tenant_id=str(tenant_id),
+                    content=_chunk['text'],
+                    embedding=emb,
+                    kb_metadata=_chunk['metadata'])
+                )
        
-    print("all documents ingested successfully")
+        session.add_all(doc_obj)
+        await session.commit()
+       
+    print(f"all {file.filename} documents ingested to {department} successfully")
         
     
     

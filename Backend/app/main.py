@@ -2,7 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db import init_db
 from app.routers import fileupload,conversation,tenant,chat,users,login
+from typing import Annotated
 
+from fastapi import FastAPI, File, UploadFile
 
 
 
@@ -36,8 +38,6 @@ async def on_startup():
     await init_db()
     print("starting")
 
-    
-    
 
 
 
