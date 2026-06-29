@@ -1,7 +1,9 @@
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
+from dotenv import load_dotenv
 import os
+load_dotenv(override=True)
 from sqlmodel import SQLModel
 from . models import User, Tenant, Conversation, Semantic_Memory, Workflow_Memory, Toolbox_Memory, Entity_Memory, Summary_Memory
 

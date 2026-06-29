@@ -13,30 +13,6 @@ def get_datetime_utc() -> datetime:
     return datetime.now(UTC)
 
 
-#user model
-class UserBase(SQLModel):
-    email: EmailStr = Field(unique=True, index=True, max_length=255)
-    is_active: bool = True
-    is_superuser: bool = False
-    full_name: str | None = Field(default=None, max_length=255)
-    
-    
-    
-class UserCreate(UserBase):
-    password: str = Field(max_length=255)
-
-class User(UserBase,table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    department: str | None = Field(default="manager", max_length=255)
-    hashed_password: str
-    created_at: datetime | None = Field(
-        default_factory=get_datetime_utc,
-        sa_type=DateTime(timezone=True),  # type: ignore
-    )
-
-class UserPublic(UserBase):
-    id: uuid.UUID
-    created_at: datetime | None = None
 
 ## tenant model
 class TenantBase(SQLModel):
@@ -50,9 +26,6 @@ class TenantBase(SQLModel):
     
 class Tenant(TenantBase,table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    owner_id: uuid.UUID | None = Field(
-        foreign_key="user.id", nullable=False, ondelete="CASCADE"
-    )
 
 class TenantCreate(TenantBase):
     pass
@@ -61,6 +34,34 @@ class TenantPublic(TenantBase):
     id: uuid.UUID
     created_at: datetime | None = None
     
+
+#user model
+class UserBase(SQLModel):
+    email: EmailStr = Field(unique=True, index=True, max_length=255)
+    is_active: bool = True
+    is_superuser: bool = False
+    department: str | None = Field(default="manager", max_length=255)
+    full_name: str | None = Field(default=None, max_length=255)
+    
+    
+    
+class UserCreate(UserBase):
+    password: str = Field(max_length=255)
+
+class User(UserBase,table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    hashed_password: str
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    tenant_id: uuid.UUID | None = Field(default=None,foreign_key="tenant.id")
+
+class UserPublic(UserBase):
+    id: uuid.UUID
+    created_at: datetime | None = None
+
+
 
 # conversation model
 class ConversationBase(SQLModel):
@@ -192,4 +193,15 @@ class ToolLog_Memory(SQLModel, table=True):
             default_factory=get_datetime_utc,
             sa_type=DateTime(timezone=True),  # type: ignore
         )
+        
+        
+# token model
+
+class Token(SQLModel):
+    access_token: str
+    token_type: str
+    
+class TokenData(SQLModel):
+    email: str | None = None
+
         

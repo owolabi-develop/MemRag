@@ -1,13 +1,19 @@
-from fastapi import FastAPI,Form,UploadFile,Depends, FastAPI, HTTPException, Query
-from typing import Annotated
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.tools.tool import register_common_tools
-from src.memory.memory_manager import MemoryManager
-from src.agent_call import call_agent
-import uuid
-from app.db import get_session,init_db
+from app.db import init_db
+from app.routers import fileupload,conversation,tenant,chat,users,login
+
+
+
+
 app = FastAPI(title="Mem Agentic Rag",
               summary="Agentic Rag with advance memory with semantic tool management")
+app.include_router(fileupload.router)
+app.include_router(conversation.router)
+app.include_router(tenant.router)
+app.include_router(chat.router)
+app.include_router(users.router)
+app.include_router(login.router)
 
 # CORS (Cross-Origin Resource Sharing) config
 origins = [
@@ -30,24 +36,9 @@ async def on_startup():
     await init_db()
     print("starting")
 
+    
+    
 
 
-
-@app.get("/load-conversation")
-async def load_conversation():
-    manager = MemoryManager()
-    conversations = await manager.load_conversational_memory_history()
-    return {"conversation_history":conversations}
-
-@app.post("/chat")
-async def chatAgent(user_query: Annotated[str, Form()],thread_id: Annotated[str, Form()]):
-    res = await call_agent(user_query,thread_id)
-    return {"response":res}
-
-
-@app.post("/upload/documents")
-async def upload_documents(sales: UploadFile,insurance: UploadFile,
-                           policy: UploadFile,technical: UploadFile):
-    pass
 
 
