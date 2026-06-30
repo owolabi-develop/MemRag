@@ -11,12 +11,12 @@ from app.models import Semantic_Memory
 import asyncio
 from app.db import async_session_pool
 
-async def load_document(file, department:str, tenant_id:str):
+async def load_document(file, department:str, department_id:str, tenant_id:str):
     print(f"loading document: {file.filename} for department: {department} and tenant_id: {tenant_id}")
     content = await file.read()
     doc = pymupdf.open(stream=content,filetype="pdf")
     md_text = pymupdf4llm.to_markdown(doc,page_chunks=True)
-    splitter = MarkdownTextSplitter(chunk_size=300, chunk_overlap=0)
+    splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=0)
     
     # get page data and metadata
     pages = [{"text": page['text'], "metadata":page['metadata']} for page in md_text]
@@ -27,7 +27,7 @@ async def load_document(file, department:str, tenant_id:str):
         for idx, chunk in enumerate(chunks):
             all_chunks.append(
                 {"text": chunk, 
-                 "metadata":{"source":file.filename, "department": department, "tenant_id": str(tenant_id), "page_number": page['metadata'].get('page_number'),"title": page['metadata'].get('title'), "chunk_index": idx, "timestamp": datetime.now().isoformat()}
+                 "metadata":{"source":file.filename, "department": department, "department_id": department_id,  "tenant_id": str(tenant_id), "page_number": page['metadata'].get('page_number'),"title": page['metadata'].get('title'), "chunk_index": idx, "timestamp": datetime.now().isoformat()}
             })
    
     # ingest chunk documents and metadata to vector db
@@ -39,7 +39,8 @@ async def load_document(file, department:str, tenant_id:str):
             emb = await hug_embedding(_chunk['text'])
             doc_obj.append(
                 Semantic_Memory(
-                    department=department,
+                     department_id=department_id,
+                     department_name=department,
                     tenant_id=str(tenant_id),
                     content=_chunk['text'],
                     embedding=emb,

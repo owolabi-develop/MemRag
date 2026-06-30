@@ -27,8 +27,7 @@ def get_password_hash(password):
 async def get_user(session,email:str):
     existing_user = await session.exec(select(User).where(User.email == email))
     user = existing_user.first()
-    if user:
-        return User.model_validate(user)
+    return user
     
 
 async def authenticate_user(session,email:str,password:str):

@@ -1,0 +1,53 @@
+from fastapi import APIRouter,status
+from fastapi import Depends, HTTPException
+from app.dependencies import sessionCreator
+from app.models import User, DepartmentCreate,DepartmentPublic,Department,UserRole
+from app.security import get_password_hash,get_current_active_user
+from sqlmodel import select
+from typing import Annotated
+
+
+router = APIRouter(prefix="/departments",
+                   tags=["departments"],
+                   responses={404: {"description": "Not found"}},)
+
+@router.post("/create",response_model=DepartmentPublic)
+async def create_department(dpt: DepartmentCreate, session:sessionCreator,current_user: Annotated[User, Depends(get_current_active_user)]):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only organization administrators can perform this action.")
+    existing_department = await session.exec(select(Department).where(Department.name == dpt.name))
+    if existing_department.first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Department already created")
+    dpt_obj = Department.model_validate(dpt)
+    
+    dpt_obj.tenant_id = current_user.tenant_id
+    
+    session.add(dpt_obj)
+    await session.commit()
+    await session.refresh( dpt_obj)
+    return dpt_obj
+
+@router.get("/all",response_model=list[DepartmentPublic])
+async def get_department(session:sessionCreator,current_user: Annotated[User,Depends(get_current_active_user)]):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Only organization administrators can perform this action.")
+    
+    existing_department = await session.exec(select(Department).where(Department.tenant_id==current_user.tenant_id))
+    if not existing_department:
+        return []
+               
+    return existing_department.all()
+
+@router.get("/per-user",response_model=DepartmentPublic)
+async def get_departments(session:sessionCreator,current_user: Annotated[User,Depends(get_current_active_user)]):
+    
+    department = await session.get(Department,current_user.dept_id)
+    if not department:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="You have not been add to any department yet")
+               
+    return department
+
+   
+
+
+

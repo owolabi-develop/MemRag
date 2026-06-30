@@ -1,7 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter,status
 from fastapi import Depends, HTTPException
 from app.dependencies import sessionCreator
-from app.models import User, Tenant, TenantCreate, TenantPublic
+from app.models import User, Tenant, TenantCreate, TenantPublic,UserRole,TenantPublicWithDept,Department
 from typing import Annotated
 from sqlmodel import select
 from app.security import get_current_active_user
@@ -15,9 +15,14 @@ async def create_tenant(current_user: Annotated[User,Depends(get_current_active_
     #get current user id
     user_id = current_user.id
     
+    ## check user role to create tenant
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only organization administrators can perform this action.")
+    
+    
     existing_tenant = await session.exec(select(Tenant).where(Tenant.name == tenant.name))
     if existing_tenant.first():
-        raise HTTPException(status_code=400, detail="Organization already exist with that name")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization already exist with that name")
      ## create new org tenant
     new_org_obj =  Tenant.model_validate(tenant)
     
@@ -38,7 +43,7 @@ async def create_tenant(current_user: Annotated[User,Depends(get_current_active_
     
     
 
-@router.get("/",response_model=TenantPublic)
+@router.get("/",response_model=TenantPublicWithDept)
 async def get_tenant(current_user: Annotated[User,Depends(get_current_active_user)], session:sessionCreator):
     tenant_id = current_user.tenant_id
     tenant = await session.get(Tenant,tenant_id)

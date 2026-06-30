@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db import init_db
-from app.routers import fileupload,conversation,tenant,chat,users,login
+from app.routers import fileupload,conversation,tenant,chat,users,login,department
 from typing import Annotated
 
 from fastapi import FastAPI, File, UploadFile
@@ -11,6 +11,7 @@ from fastapi import FastAPI, File, UploadFile
 app = FastAPI(title="Mem Agentic Rag",
               summary="Agentic Rag with advance memory with semantic tool management")
 app.include_router(fileupload.router)
+app.include_router(department.router)
 app.include_router(conversation.router)
 app.include_router(tenant.router)
 app.include_router(chat.router)

@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 from pgvector.sqlalchemy import VECTOR
-
+from enum import Enum
 from pydantic import EmailStr
 from sqlalchemy import DateTime
 from sqlmodel import Field, Relationship, SQLModel
@@ -13,40 +13,68 @@ def get_datetime_utc() -> datetime:
     return datetime.now(UTC)
 
 
+class UserRole(str,Enum):
+    ADMIN = "admin"
+    MANAGER = "manager"
+    USER = "user"
 
-## tenant model
+
+
+## tenant company model
 class TenantBase(SQLModel):
     name: str = Field(unique=True, index=True, max_length=255)
     description: str | None = Field(default=None, max_length=255)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
-        sa_type=DateTime(timezone=True),  # type: ignore
+        sa_type=DateTime(timezone=True), 
     )
-    
+
+
     
 class Tenant(TenantBase,table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True) 
+    departments: list["Department"] = Relationship(back_populates="tenant",sa_relationship_kwargs={"lazy": "selectin"})
+    
 class TenantCreate(TenantBase):
     pass
 
 class TenantPublic(TenantBase):
-    id: uuid.UUID
-    created_at: datetime | None = None
-    
+    id: uuid.UUID 
+    created_at: datetime | None = None 
 
+## department model
+class DepartmentBase(SQLModel):
+    name: str = Field(unique=True, index=True, max_length=255)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True), 
+    )
+
+
+class Department(DepartmentBase,table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    tenant_id: uuid.UUID | None = Field(default=None,foreign_key="tenant.id")
+    tenant: Tenant | None = Relationship(back_populates="departments")
+    users: list["User"] = Relationship(back_populates="department", sa_relationship_kwargs={"lazy": "selectin"})
+
+class DepartmentPublic(DepartmentBase):
+    id: uuid.UUID
+    created_at: datetime | None = None 
+class DepartmentCreate(DepartmentBase):
+    pass
+class TenantPublicWithDept(TenantPublic):
+    departments: list[DepartmentPublic] = []
+   
 #user model
 class UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
     is_active: bool = True
     is_superuser: bool = False
-    department: str | None = Field(default="manager", max_length=255)
-    full_name: str | None = Field(default=None, max_length=255)
+    role: UserRole = Field(default=UserRole.USER)
+    first_name: str | None = Field(default=None, max_length=255)
+    last_name: str | None = Field(default=None, max_length=255)
     
-    
-    
-class UserCreate(UserBase):
-    password: str = Field(max_length=255)
+
 
 class User(UserBase,table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -56,10 +84,15 @@ class User(UserBase,table=True):
         sa_type=DateTime(timezone=True),  # type: ignore
     )
     tenant_id: uuid.UUID | None = Field(default=None,foreign_key="tenant.id")
+    dept_id: uuid.UUID | None = Field(default=None,foreign_key="department.id")
+    department: Department | None = Relationship(back_populates="users")
 
 class UserPublic(UserBase):
     id: uuid.UUID
-    created_at: datetime | None = None
+    created_at: datetime | None = None  
+    
+class UserCreate(UserBase):
+    password: str = Field(max_length=255)
 
 
 
@@ -70,6 +103,7 @@ class ConversationBase(SQLModel):
     role: str | None = Field(default=None, max_length=255)
     content: str | None = Field(default=None, max_length=1000)
     tenant_id: uuid.UUID = Field(index=True, max_length=255)
+    department_id: uuid.UUID = Field(index=True, max_length=255)
     con_timestamp: datetime | None = Field(index=True,
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -92,7 +126,8 @@ class Conversation(ConversationBase, table=True):
 #knowledge base model
 class Semantic_Memory(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    department: str = Field(index=True, max_length=255)
+    department_id: uuid.UUID = Field(index=True, max_length=255)
+    department_name: str | None = Field(default=None, max_length=1000)
     tenant_id: uuid.UUID = Field(index=True, max_length=255)
     content: str | None = Field(default=None, max_length=1000)
     embedding: Any = Field(sa_type=VECTOR(768))
@@ -112,6 +147,7 @@ class Workflow_Memory(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     content: str | None = Field(default=None, max_length=1000)
     embedding: Any = Field(sa_type=VECTOR(768))
+    department_id: uuid.UUID = Field(index=True, max_length=255)
     tenant_id: uuid.UUID = Field(index=True, max_length=255)
     kb_metadata: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSONB))
    
@@ -129,6 +165,7 @@ class Toolbox_Memory(SQLModel, table=True):
         id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
         content: str | None = Field(default=None, max_length=1000)
         embedding: Any = Field(sa_type=VECTOR(768))
+        department_id: uuid.UUID = Field(index=True, max_length=255)
         tenant_id: uuid.UUID = Field(index=True, max_length=255)
         kb_metadata: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSONB))
        
@@ -147,6 +184,7 @@ class Entity_Memory(SQLModel, table=True):
         id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
         content: str | None = Field(default=None, max_length=1000)
         embedding: Any = Field(sa_type=VECTOR(768))
+        department_id: uuid.UUID = Field(index=True, max_length=255)
         tenant_id: uuid.UUID = Field(index=True, max_length=255)
         kb_metadata: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSONB))
        
@@ -163,6 +201,7 @@ class Entity_Memory(SQLModel, table=True):
 class Summary_Memory(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     tenant_id: uuid.UUID = Field(index=True, max_length=255)
+    department_id: uuid.UUID = Field(index=True, max_length=255)
     content: str | None = Field(default=None, max_length=1000)
     embedding: Any = Field(sa_type=VECTOR(768))
     kb_metadata: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSONB))
