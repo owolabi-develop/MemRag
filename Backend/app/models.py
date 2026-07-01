@@ -96,6 +96,14 @@ class UserCreate(UserBase):
 
 
 
+
+
+
+
+
+
+
+
 # conversation model
 class ConversationBase(SQLModel):
     thread_id: str = Field(unique=True, index=True, max_length=255)
@@ -125,7 +133,7 @@ class Conversation(ConversationBase, table=True):
 
 #knowledge base model
 class Semantic_Memory(SQLModel, table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     department_id: uuid.UUID = Field(index=True, max_length=255)
     department_name: str | None = Field(default=None, max_length=1000)
     tenant_id: uuid.UUID = Field(index=True, max_length=255)
