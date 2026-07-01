@@ -47,6 +47,30 @@ async def get_departments(session:sessionCreator,current_user: Annotated[User,De
                
     return department
 
+
+@router.post("/add/user/{department_id}/{user_id}",response_model=DepartmentPublic)
+async def add_user(user_id:str, session:sessionCreator,current_user: Annotated[User,Depends(get_current_active_user)],department_id:str):
+    existing_user = await session.get(User,user_id)
+    
+    if existing_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    existing_dpt_org = await session.get(Department,department_id)
+    if existing_dpt_org is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
+    user_obj = existing_user
+    existing_dpt_obj = existing_dpt_org
+    existing_dpt_obj.users.append(user_obj)
+    
+    session.add(existing_dpt_obj)
+    await session.commit()
+    await session.refresh(existing_dpt_obj)
+    
+    ## get tenant org
+    
+    
+    return existing_dpt_obj
+
    
 
 

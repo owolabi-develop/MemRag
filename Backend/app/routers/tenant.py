@@ -1,7 +1,7 @@
 from fastapi import APIRouter,status
 from fastapi import Depends, HTTPException
 from app.dependencies import sessionCreator
-from app.models import User, Tenant, TenantCreate, TenantPublic,UserRole,TenantPublicWithDept,Department
+from app.models import User, Tenant, TenantCreate, TenantPublic,UserRole,TenantPublicWithDept,UserPublic
 from typing import Annotated
 from sqlmodel import select
 from app.security import get_current_active_user
@@ -40,7 +40,18 @@ async def create_tenant(current_user: Annotated[User,Depends(get_current_active_
     await session.refresh(user_obj)
     
     return new_org_obj
+
+
+@router.get("/users/",response_model=list[UserPublic])
+async def get_tenant_user(session:sessionCreator,current_user: Annotated[User,Depends(get_current_active_user)]):
     
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Only organization administrators can perform this action.")
+    
+    existing_user = await session.exec(select(User).where(User.tenant_id == current_user.tenant_id))
+    
+    
+    return existing_user 
     
 
 @router.get("/",response_model=TenantPublicWithDept)

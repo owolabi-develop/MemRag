@@ -16,7 +16,7 @@ def get_datetime_utc() -> datetime:
 class UserRole(str,Enum):
     ADMIN = "admin"
     MANAGER = "manager"
-    USER = "user"
+    USER = "employee"
 
 
 
@@ -41,7 +41,14 @@ class TenantCreate(TenantBase):
 class TenantPublic(TenantBase):
     id: uuid.UUID 
     created_at: datetime | None = None 
-
+    
+class TenantPublicWithDept(TenantPublic):
+    departments: list[DepartmentPublicWithUsers] = []
+## department user link
+class DepartmentUserLink(SQLModel, table=True):
+    department_id: uuid.UUID = Field(default=None,foreign_key="department.id", primary_key=True)
+    user_id: uuid.UUID = Field(default=None,foreign_key="user.id", primary_key=True)
+    
 ## department model
 class DepartmentBase(SQLModel):
     name: str = Field(unique=True, index=True, max_length=255)
@@ -55,16 +62,20 @@ class Department(DepartmentBase,table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     tenant_id: uuid.UUID | None = Field(default=None,foreign_key="tenant.id")
     tenant: Tenant | None = Relationship(back_populates="departments")
-    users: list["User"] = Relationship(back_populates="department", sa_relationship_kwargs={"lazy": "selectin"})
+    users: list["User"] = Relationship(back_populates="departments", sa_relationship_kwargs={"lazy": "selectin"},link_model=DepartmentUserLink)
 
 class DepartmentPublic(DepartmentBase):
     id: uuid.UUID
-    created_at: datetime | None = None 
+    created_at: datetime | None = None
+class DepartmentPublicWithUsers(DepartmentBase):
+    id: uuid.UUID
+    created_at: datetime | None = None
+    users: list["UserPublic"] = []
 class DepartmentCreate(DepartmentBase):
     pass
-class TenantPublicWithDept(TenantPublic):
-    departments: list[DepartmentPublic] = []
-   
+
+
+
 #user model
 class UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
@@ -84,8 +95,7 @@ class User(UserBase,table=True):
         sa_type=DateTime(timezone=True),  # type: ignore
     )
     tenant_id: uuid.UUID | None = Field(default=None,foreign_key="tenant.id")
-    dept_id: uuid.UUID | None = Field(default=None,foreign_key="department.id")
-    department: Department | None = Relationship(back_populates="users")
+    departments: list[Department] = Relationship(back_populates="users",sa_relationship_kwargs={"lazy": "selectin"},link_model=DepartmentUserLink)
 
 class UserPublic(UserBase):
     id: uuid.UUID
