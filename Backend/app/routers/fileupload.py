@@ -7,6 +7,7 @@ from app.security import get_current_active_user
 from typing import Annotated
 from src.Ingestion.loaders import load_document
 import asyncio
+import uuid
 
 router = APIRouter(
     prefix="/documents/upload",
@@ -14,13 +15,13 @@ router = APIRouter(
 )
 
 @router.post("/")
-async def upload_documents(file: UploadFile,department_id:Annotated[str,Form()],
+async def upload_documents(file: UploadFile,department_id:Annotated[uuid.UUID,Form()],
                 current_user:Annotated[User,Depends(get_current_active_user)],
                 session:sessionCreator):
     #get department name
     dpt_name =  await session.get(Department,department_id)
    
-    tenant_id = str(current_user.tenant_id)
+    tenant_id = current_user.tenant_id
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Only organization administrators can perform this action.")
     

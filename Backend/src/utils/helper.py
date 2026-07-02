@@ -253,4 +253,8 @@ async def offload_to_summary(context: str, memory_manager,thread_id: str = None)
 
     return compact_context, [result]
 
+
+async def get_current_user_dpt(departments:list[uuid.UUID]):
+     dpt =  [ dpt.id for dpt in departments]
+     return dpt
  

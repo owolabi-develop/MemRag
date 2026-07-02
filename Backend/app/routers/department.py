@@ -38,12 +38,13 @@ async def get_department(session:sessionCreator,current_user: Annotated[User,Dep
                
     return existing_department.all()
 
-@router.get("/per-user",response_model=DepartmentPublic)
+from src.utils.helper import get_current_user_dpt
+@router.get("/per-user",response_model=list[DepartmentPublic])
 async def get_departments(session:sessionCreator,current_user: Annotated[User,Depends(get_current_active_user)]):
     
-    department = await session.get(Department,current_user.dept_id)
-    if not department:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="You have not been add to any department yet")
+    department = current_user.departments
+    dpt = await get_current_user_dpt(department)
+    print("departments",dpt)
                
     return department
 
