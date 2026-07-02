@@ -6,11 +6,10 @@ from src.embeddings.embedder import hug_embedding
 import pymupdf4llm
 from langchain_text_splitters import MarkdownTextSplitter
 import pymupdf
-from app.dependencies import sessionCreator
-from app.models import Semantic_Memory
 import asyncio
 import uuid
-from app.db import async_session_pool
+from src.connection.connections import get_db_pool
+
 
 async def load_document(file, department:str, department_id:uuid.UUID, tenant_id:uuid.UUID):
     print(f"loading document: {file.filename} for department: {department} and tenant_id: {tenant_id}")
@@ -33,23 +32,15 @@ async def load_document(file, department:str, department_id:uuid.UUID, tenant_id
    
     # ingest chunk documents and metadata to vector db
     print("ingesting documents...")
-    
-    async with async_session_pool() as session:    
-        doc_obj = []
+    pool = await get_db_pool()
+    async with pool.acquire() as con:
         for _chunk in all_chunks:
             emb = await hug_embedding(_chunk['text'])
-            doc_obj.append(
-                Semantic_Memory(
-                     department_id=department_id,
-                     department_name=department,
-                    tenant_id=tenant_id,
-                    content=_chunk['text'],
-                    embedding=emb,
-                    kb_metadata=_chunk['metadata'])
-                )
-       
-        session.add_all(doc_obj)
-        await session.commit()
+            await con.execute(f"""
+                INSERT INTO SEMANTIC_MEMORY (content, department_name, tenant_id, department_id, metadata, embedding)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding
+            """, _chunk['text'], department, tenant_id, department_id,_chunk['metadata'], emb)
        
     print(f"all {file.filename} documents ingested to {department} successfully")
         

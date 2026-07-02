@@ -79,10 +79,13 @@ async def summarize_and_store(text: str, thread_id: str = None) -> str:
 async def read_knowledge_base(query: str, department: list[uuid.UUID],
     tenant_id: uuid.UUID, k: int = 3) -> str:
     """
-        Search for sale, insurance, policy and technical documents.
+       Retrieved background documents and previously ingested reference material relevant to the current query.
+                    ### How you should leverage it
+                    - Use this tool when you need to find relevant information from previously ingested documents or reference material.
+                    - It is particularly useful for retrieving context that can help answer questions or provide insights related to the current query.
         Args:
-            query: contain sale, insurance, policy and technical document topic 
-            k: Number of relevant tools to return (default: 5)
+            query: A natural language description of the information you are seeking.
+            k: Number of relevant tools to return (default: 3)
         
         Returns:
           document contain sale details
