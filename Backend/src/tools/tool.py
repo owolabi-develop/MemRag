@@ -2,7 +2,7 @@ from .toolbox import ToolBox
 from src.utils.helper import summarise_context_window, summarize_conversation
 from src.retrieval.retriever import hybrid_search_retriever
 from src.memory.memory_manager import MemoryManager
-
+import uuid
 manager = MemoryManager()
 
 tool= ToolBox(manager)
@@ -76,8 +76,8 @@ async def summarize_and_store(text: str, thread_id: str = None) -> str:
     return f"Stored as [Summary ID: {result['id']}] {result['description']}"
             
 
-async def read_knowledge_base(query: str, department: str | list[str],
-    tenant_id: str, k: int = 3) -> str:
+async def read_knowledge_base(query: str, department: list[uuid.UUID],
+    tenant_id: uuid.UUID, k: int = 3) -> str:
     """
         Search for sale, insurance, policy and technical documents.
         Args:
@@ -89,7 +89,7 @@ async def read_knowledge_base(query: str, department: str | list[str],
             
         """
 
-    results = await hybrid_search_retriever(query, department, tenant_id, table_name="semantic_memory_sales",k=k)
+    results = await hybrid_search_retriever(query, department, tenant_id,k=k)
     return results
 
 

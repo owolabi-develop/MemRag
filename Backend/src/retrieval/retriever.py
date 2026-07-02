@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import UUID,ARRAY
 
 
 
-async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], tenant_id: uuid.UUID, k: int=5):
+async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], tenant_id: uuid.UUID, k: int=3):
     print("department_ids",department_ids)
     sql = text("""
             WITH semantic_search AS (

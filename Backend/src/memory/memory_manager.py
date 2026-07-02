@@ -153,7 +153,7 @@ class MemoryManager:
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             await con.execute(f"""
-                        INSERT INTO {table_name} (content, metadata, embedding)
+                        INSERT INTO {table_name} (content, kb_metadata, embedding)
                         VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE 
                         SET embedding = EXCLUDED.embedding;
                         """,content, metadata,embedding)
@@ -166,7 +166,7 @@ class MemoryManager:
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             result = await con.fetch(f"""
-                        SELECT content, metadata FROM {table_name}
+                        SELECT content, kb_metadata FROM {table_name}
                         ORDER BY embedding <=> $1
                         LIMIT $2
                         """,embedding,k)
@@ -177,7 +177,7 @@ class MemoryManager:
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             result = await con.fetch(f"""
-                        SELECT content, metadata FROM {table_name}
+                        SELECT content, kb_metadata FROM {table_name}
                         where metadata @> $1
                         ORDER BY embedding <=> $2
                         LIMIT $3

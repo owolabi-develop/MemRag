@@ -183,8 +183,6 @@ class Toolbox_Memory(SQLModel, table=True):
         id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
         content: str | None = Field(default=None, max_length=1000)
         embedding: Any = Field(sa_type=VECTOR(768))
-        department_id: uuid.UUID = Field(index=True, max_length=255)
-        tenant_id: uuid.UUID = Field(index=True, max_length=255)
         kb_metadata: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSONB))
        
         __table_args__ = (

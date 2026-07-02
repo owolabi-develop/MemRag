@@ -2,9 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db import init_db
 from app.routers import fileupload,conversation,tenant,chat,users,login,department
-from typing import Annotated
-
-from fastapi import FastAPI, File, UploadFile
+from src.tools.tool import register_common_tools
+from fastapi import FastAPI
 
 
 
@@ -35,8 +34,8 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def on_startup():
-    # await register_common_tools()
     await init_db()
+    await register_common_tools()
     print("starting")
 
 

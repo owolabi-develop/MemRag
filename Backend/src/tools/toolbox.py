@@ -50,7 +50,7 @@ class ToolBox:
             async with pool.acquire() as con:
                 results = await con.fetchrow(f"""
                             SELECT count(*) FROM {self.memory_manager.toolbox_vs}
-                            where metadata ->> 'name' = $1
+                            where kb_metadata ->> 'name' = $1
                             """,tool_name)
              
                 return results[0] > 0
