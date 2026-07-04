@@ -10,8 +10,11 @@ from typing import List, Optional,Literal
 from pprint import pprint
 from src.llm.llm_client import client   
 from src.connection.connections import get_db_pool
+from app.db import async_session_pool
+from app.models import Conversation
 from pgvector.asyncpg import register_vector
 import asyncpg
+from sqlmodel import select
 
 
 class Entity(BaseModel):
@@ -42,7 +45,7 @@ class MemoryManager:
     def __init__(
         self,
     ):
-        self.conversation_table = "CONVERSATIONAL_MEMORY"
+        self.conversation_table = "CONVERSATION"
         self.workflow_vs ="WORKFLOW_MEMORY"
         self.toolbox_vs = "TOOLBOX_MEMORY"
         self.entity_vs = "ENTITY_MEMORY"
@@ -81,26 +84,29 @@ class MemoryManager:
         return cls.pool
         
         
-    async def write_conversational_memory(self, content: str, role: str, thread_id: str) -> str:
-        pool = await MemoryManager.get_pool()
-        async with pool.acquire() as con:
-            record_id = await con.fetchval("""
-            INSERT INTO conversational_memory
-            (thread_id, role, content, metadata, con_timestamp)
-            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-            RETURNING id
-        """, thread_id, role, content, "{}",)
-            
-        return record_id
+    async def write_conversational_memory(self, content: str, role: str, thread_id: str, tenant_id: uuid.UUID,owner_id:uuid.UUID) -> str:
+        # pool = await MemoryManager.get_pool()
+        async with async_session_pool() as session:
+            session.add(Conversation(
+                thread_id=thread_id,
+                role=role,
+                content=content,
+                tenant_id=tenant_id,
+                owner_id=owner_id
+            ))
+            await session.commit()
+            record_id = await session.exec(select(Conversation).where(Conversation.thread_id == thread_id))
+        return record_id.first().id   
+        
     
-    async def read_conversational_memory(self,thread_id: str, limit: int = 10) -> str:
+    async def read_conversational_memory(self,thread_id: str, tenant_id: uuid.UUID,owner_id:uuid.UUID, limit: int = 10) -> str:
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             
             results = await con.fetch(f"""
                         SELECT content, role, con_timestamp FROM {self.conversation_table}
-                        where thread_id = $1 AND summary_id IS NULL ORDER BY con_timestamp ASC
-                        FETCH FIRST $2 ROWS ONLY """, thread_id, limit)
+                        where thread_id = $1 AND tenant_id = $2 AND owner_id = $3 AND summary_id IS NULL ORDER BY con_timestamp ASC
+                        FETCH FIRST $4 ROWS ONLY """, thread_id, tenant_id, owner_id, limit)
             
             messages = [f"[{ts.strftime('%H:%M:%S')}] [{role}] {content}" for role, content, ts in results]
             messages_formatted = '\n'.join(messages)
@@ -117,7 +123,7 @@ class MemoryManager:
 
                         {messages_formatted}"""
     
-    async def load_conversational_memory_history(self,):
+    async def load_conversational_memory_history(self):
         """ load all conversational memory history"""
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
@@ -153,10 +159,22 @@ class MemoryManager:
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             await con.execute(f"""
-                        INSERT INTO {table_name} (content, kb_metadata, embedding)
+                        INSERT INTO {table_name} (content, metadata, embedding)
                         VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE 
                         SET embedding = EXCLUDED.embedding;
                         """,content, metadata,embedding)
+    
+        print(f"upserting document to table: {table_name}")
+        
+    async def add_text_to_vs_with_ids(self, table_name: str, content: str ,metadata:dict,tenant_id: uuid.UUID):
+        embedding = await hug_embedding(content)
+        pool = await MemoryManager.get_pool()
+        async with pool.acquire() as con:
+            await con.execute(f"""
+                        INSERT INTO {table_name} (content, metadata, embedding, tenant_id)
+                        VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE 
+                        SET embedding = EXCLUDED.embedding;
+                        """,content, metadata,embedding,tenant_id)
     
         print(f"upserting document to table: {table_name}")
         
@@ -166,7 +184,7 @@ class MemoryManager:
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             result = await con.fetch(f"""
-                        SELECT content, kb_metadata FROM {table_name}
+                        SELECT content, metadata FROM {table_name}
                         ORDER BY embedding <=> $1
                         LIMIT $2
                         """,embedding,k)
@@ -177,7 +195,7 @@ class MemoryManager:
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             result = await con.fetch(f"""
-                        SELECT content, kb_metadata FROM {table_name}
+                        SELECT content, metadata FROM {table_name}
                         where metadata @> $1
                         ORDER BY embedding <=> $2
                         LIMIT $3
@@ -223,27 +241,40 @@ class MemoryManager:
             if tool_name in seen_tool_names:
                 continue
             seen_tool_names.add(tool_name)
-            # Extract parameters from metadata and convert to OpenAI format
+            # Extract parameters from metadata and convert to Gemini format
             stored_params = meta.get("parameters", {})
             properties = {}
             required = []
             
             for param_name, param_info in stored_params.items():
                 # Convert stored param info to google gemini format schema format
-                param_type = param_info.get("type", "string")
+                
+                    
+                param_type = param_info.get("type")
                 # Map Python types to JSON schema types
+            
                 type_mapping = {
                     "<class 'str'>": "string",
-                    "<class 'int'>": "integer", 
+                    "<class 'int'>": "integer",
                     "<class 'float'>": "number",
                     "<class 'bool'>": "boolean",
+                    "<class 'uuid.UUID'>":"string",
                     "str": "string",
                     "int": "integer",
                     "float": "number",
-                    "bool": "boolean"
+                    "bool": "boolean",
                 }
-                json_type = type_mapping.get(param_type, "string")
-                properties[param_name] = {"type": json_type}
+        
+                if param_type == "list[uuid.UUID]":
+                    json_type = "array"
+                    properties[param_name] = {
+                        "type": json_type,
+                        "items": {"type": "string", "format": "uuid"}
+                    }
+                else:
+                    json_type = type_mapping.get(param_type, "string")
+                
+                    properties[param_name] = {"type": json_type}
                 
                 # If no default, it's required
                 if "default" not in param_info:
@@ -256,25 +287,7 @@ class MemoryManager:
              
             })
         return tools
-    
-    async def read_knowledge_base(self, query: str, k: int = 3) -> str:
-        """Search knowledge base for relevant content."""
-        results = await self.similarity_search_vs(self.knowledge_base_vs,query, k=k)
-       
-        content = "\n".join([doc[0] for doc in results])
-        if not content:
-            content = "(No relevant knowledge base passages found.)"
-        return f"""## Knowledge Base Memory
-                    ### What this memory is
-                    Retrieved background documents and previously ingested reference material relevant to the current query.
-                    ### How you should leverage it
-                    - Ground responses in these passages when making factual or technical claims.
-                    - Prefer concrete details from this memory over unsupported assumptions.
-                    - If evidence is missing or ambiguous, state uncertainty and request clarification or additional retrieval.
-                    ### Retrieved passages 
-                    # {content}
-                    # """
-    
+        
     
     ## read  and write tool logs
     
@@ -372,25 +385,28 @@ class MemoryManager:
         except:
             return []
     
-    async def write_entity(self, name: str, entity_type: str, description: str, llm_client=None, text: str = None):
+    async def write_entity(self, name: str, tenant_id: uuid.UUID,entity_type: str, description: str, llm_client=None, text: str = None):
         """Store an entity OR extract and store entities from text."""
         if text and llm_client:
             # Extract and store entities from text
             entities = await self.extract_entities(text, llm_client)
             for e in entities:
-                await self.add_text_to_vs(self.entity_vs,
+                await self.add_text_to_vs_with_ids(self.entity_vs,
                     [f"{e['name']} ({e['type']}): {e['description']}"],
-                    [{"name": e['name'], "type": e['type'], "description": e['description']}]
+                    {"name": e['name'], "type": e['type'], "description": e['description']},
+                    tenant_id,
+
                 )
             return entities
         else:
             # Store single entity directly
-            await self.add_text_to_vs(self.entity_vs,
+            await self.add_text_to_vs_with_ids(self.entity_vs,
                 [f"{name} ({entity_type}): {description}"],
-                [{"name": name, "type": entity_type, "description": description}]
+                [{"name": name, "type": entity_type, "description": description}],
+                tenant_id,
             )
     
-    async def read_entity(self, query: str, k: int = 5) -> str:
+    async def read_entity(self, query: str, tenant_id: uuid.UUID,k: int = 5) -> str:
         """Search for relevant entities."""
         results = await self.similarity_search_vs(self.entity_vs,query,k)
         if not results:
@@ -424,7 +440,9 @@ Entity-level context such as people, organizations, systems, tools, and other na
         full_content: str,
         summary: str,
         description: str,
+        tenant_id: uuid.UUID,
         thread_id: str | None = None,
+        
     ):
         """Store a summary with its original content."""
         metadata = {
@@ -435,9 +453,10 @@ Entity-level context such as people, organizations, systems, tools, and other na
         }
         if thread_id is not None:
             metadata["thread_id"] = str(thread_id)
-        await self.add_text_to_vs(self.summary_vs,
+        await self.add_text_to_vs_with_ids(self.summary_vs,
             [f"{summary_id}: {description}"],
-            [metadata]
+            [metadata],
+            tenant_id
         )
         return summary_id
     
@@ -533,7 +552,7 @@ Compressed snapshots of older conversation windows preserved to retain long-rang
         return "\n".join(lines)
     
     
-    async def write_workflow(self, query: str, steps: list, final_answer: str, success: bool = True):
+    async def write_workflow(self, query: str, tenant_id: uuid.UUID,steps: list, final_answer: str, success: bool = True):
         """Store a completed workflow pattern for future reference."""
         # Format steps as text
         steps_text = "\n".join([f"Step {i+1}: {s}" for i, s in enumerate(steps)])
@@ -545,9 +564,9 @@ Compressed snapshots of older conversation windows preserved to retain long-rang
             "num_steps": len(steps),
             "timestamp": datetime.now().isoformat()
         }
-        await self.add_text_to_vs(self.workflow_vs,text, metadata)
-    
-    async def read_workflow(self, query: str, k: int = 3) -> str:
+        await self.add_text_to_vs_with_ids(self.workflow_vs, text, metadata, tenant_id)
+
+    async def read_workflow(self, query: str, tenant_id: uuid.UUID,k: int = 3) -> str:
         """Search for similar past workflows with at least 1 step."""
         # Filter to only include workflows that have steps (num_steps > 0)
         results = await self.similarity__with_filter_search_vs(self.workflow_vs,

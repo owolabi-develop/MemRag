@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db import init_db
+from src.vectordb.vectordb import StoreManager
 from app.routers import fileupload,conversation,tenant,chat,users,login,department
 from src.tools.tool import register_common_tools
 from fastapi import FastAPI
@@ -34,8 +35,11 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def on_startup():
-    await init_db()
-    await register_common_tools()
+    # create user table and other tables if not exist
+    # await init_db()
+    # create vector dbs and index
+    # await StoreManager().create_db()
+    #await register_common_tools()
     print("starting")
 
 

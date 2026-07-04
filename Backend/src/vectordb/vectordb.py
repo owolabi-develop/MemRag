@@ -1,8 +1,13 @@
-
+from pgvector.asyncpg import register_vector
+import asyncpg
+import os
+import json
 class StoreManager:
     """Manages all stores (vector stores and SQL tables) with getter methods for easy access."""
     
-    def __init__(self, pool):
+    pool = None
+    
+    def __init__(self):
         """
         Initialize all stores.
         
@@ -10,10 +15,38 @@ class StoreManager:
             client: postgres database connection
 
         """
-        self.pool = pool
+    @classmethod
+    async def setup_codec(cls,conn):
+        for json_type in ['json', 'jsonb']:
+            await conn.set_type_codec(
+                json_type,
+                encoder=json.dumps,
+                decoder=json.loads,
+                schema='pg_catalog'
+            )
+            
+    @classmethod
+    async def init_connection(cls,conn):
+        await register_vector(conn)
+        await cls.setup_codec(conn)
+        
+    @classmethod
+    async def get_pool(cls):
+        if cls.pool is None:
+            cls.pool = await asyncpg.create_pool(
+                user=os.getenv("DB_USER"),
+                password=os.getenv("DB_PASSWORD"),
+                database=os.getenv("DB_NAME"),
+                host=os.getenv("DB_HOST"),
+                port=os.getenv("DB_PORT"),
+                init=cls.init_connection
+            )
+            print("Connected successfully")
+        return cls.pool
+    
     async def create_db(self):
          
-        table_names = {"knowledge_base":"  ",
+        table_names = {"knowledge_base":"SEMANTIC_MEMORY",
              "workflow":"WORKFLOW_MEMORY",
               "toolbox":"TOOLBOX_MEMORY",
               "entity":"ENTITY_MEMORY",
@@ -43,22 +76,34 @@ class StoreManager:
             table_name=table_names['summary'],
         )
         
-        ## initialize sql tables
-        self._create_conversational_history_table = await self.create_conversational_history_table()
         
         self._create_tool_log_table = await self.create_tool_log_table()
         
         
     async def create_vector_store(self,table_name):
-    
-        async with self.pool.acquire() as con:
+        pool = await StoreManager.get_pool()
+        async with pool.acquire() as con:
            ## DROP TABLE IF EXISTS 
             try:
                 await con.execute(f"DROP TABLE IF EXISTS {table_name}")
                 await con.execute("CREATE EXTENSION vector;")
             except:
                 pass
-            await con.execute(f"""
+            if table_name == "WORKFLOW_MEMORY" or table_name == "ENTITY_MEMORY" or table_name == "SUMMARY_MEMORY":
+                await con.execute(f"""
+                        CREATE TABLE {table_name} (
+                            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                            content text NOT NULL,
+                            tenant_id UUID DEFAULT gen_random_uuid(),
+                            metadata JSONB,
+                            embedding vector(768)
+                             );
+                        """)
+                await con.execute(f"""
+                                    CREATE INDEX idx_{table_name.lower()}_tenant_id ON {table_name}(tenant_id)
+                                """)
+            else:   
+                await con.execute(f"""
                         CREATE TABLE {table_name} (
                             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                             content text NOT NULL,
@@ -66,18 +111,18 @@ class StoreManager:
                             embedding vector(768)
                              );
                         """)
-            await con.execute(f"""
+                await con.execute(f"""
                         CREATE INDEX ON {table_name} USING hnsw (embedding vector_cosine_ops);
                         """)
-            await con.execute(f"""
+                await con.execute(f"""
                              CREATE INDEX ON {table_name} USING GIN (to_tsvector('english', content));
                             """)
             
         print(f" Table {table_name} created successfully with indexes")
         
     async def create_vector_kb_store(self,table_name):
-            
-                async with self.pool.acquire() as con:
+        pool = await StoreManager.get_pool()
+        async with pool.acquire() as con:
                    ## DROP TABLE IF EXISTS 
                     try:
                         await con.execute(f"DROP TABLE IF EXISTS {table_name}")
@@ -88,8 +133,9 @@ class StoreManager:
                                 CREATE TABLE {table_name} (
                                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                                     content text NOT NULL,
-                                    department varchar(20) NOT NULL,
+                                    department_name varchar(20) NOT NULL,
                                     tenant_id UUID DEFAULT gen_random_uuid(),
+                                    department_id UUID DEFAULT gen_random_uuid(),
                                     metadata JSONB,
                                     embedding vector(768)
                                      );
@@ -101,19 +147,25 @@ class StoreManager:
                                      CREATE INDEX ON {table_name} USING GIN (to_tsvector('english', content));
                                     """)
                     await con.execute(f"""
-                                    CREATE INDEX idx_{table_name.lower()}_department ON {table_name}(department)
+                                    CREATE INDEX idx_{table_name.lower()}_department_name ON {table_name}(department_name)
+                                """)
+                    await con.execute(f"""
+                                    CREATE INDEX idx_{table_name.lower()}_department_id ON {table_name}(department_id)
+                                """)
+                    await con.execute(f"""
+                                    CREATE INDEX idx_{table_name.lower()}_tenant_id ON {table_name}(tenant_id)
                                 """)
                     
                     
-                print(f" Table {table_name} created successfully with indexes")
+        print(f" Table {table_name} created successfully with indexes")
         
     async def create_tool_log_table(self,table_name: str = "TOOL_LOG_MEMORY"):
         """
         Create a table to store raw tool execution logs per thread.
         If the table already exists, returns the table name without recreating it.
         """
-       
-        async with self.pool.acquire() as con:
+        pool = await StoreManager.get_pool()
+        async with pool.acquire() as con:
             try:
                await con.execute(f"DROP TABLE IF EXISTS {table_name}")
             except:
@@ -150,46 +202,7 @@ class StoreManager:
         
         return table_name
 
-    async def create_conversational_history_table(self, table_name: str = "CONVERSATIONAL_MEMORY"):
-        """
-        Create a table to store conversational history.
-
-        Args:
-            table_name: Name of the table to create
-        """
-        async with self.pool.acquire() as con:
-            # Drop table if exists
-            try:
-                await con.execute(f"DROP TABLE IF EXISTS {table_name}")
-            except:
-                pass  # Table doesn't exist
-            
-            # Create table with proper schema
-            await con.execute(f"""
-                CREATE TABLE {table_name} (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    thread_id VARCHAR(100) NOT NULL,
-                    role VARCHAR(50) NOT NULL,
-                    content TEXT NOT NULL,
-                    con_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    metadata JSONB,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    summary_id VARCHAR(100) DEFAULT NULL
-                )
-            """)
-            
-            # Create index on thread_id for faster lookups
-            await con.execute(f"""
-                CREATE INDEX idx_{table_name.lower()}_thread_id ON {table_name}(thread_id)
-            """)
-            
-            # Create index on timestamp for ordering
-            await con.execute(f"""
-                CREATE INDEX idx_{table_name.lower()}_con_timestamp ON {table_name}(con_timestamp)
-            """)
-            
-        print(f"Table {table_name} created successfully with indexes")
-        return table_name
+    
             
     
    

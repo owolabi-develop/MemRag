@@ -258,3 +258,7 @@ async def get_current_user_dpt(departments:list[uuid.UUID]):
      dpt =  [ dpt.id for dpt in departments]
      return dpt
  
+async def get_current_user_dpt_name(departments:list[uuid.UUID]):
+     dpt =  [ dpt.name for dpt in departments]
+     return dpt
+ 
