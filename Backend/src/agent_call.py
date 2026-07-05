@@ -65,6 +65,7 @@ async def call_agent(
     user_details:str,
     tenant_id: uuid.UUID,
     owner_id: uuid.UUID,
+    session_id:uuid.UUID,
     max_iterations: int = 10,
 ) -> str:
     """Agent loop with context window monitoring and summarization."""
@@ -84,7 +85,7 @@ async def call_agent(
     async with asyncio.TaskGroup() as load_context:
         
         t1 = load_context.create_task(
-            memory_manager.read_conversational_memory(thread_id, tenant_id, owner_id)
+            memory_manager.read_conversational_memory(thread_id, tenant_id, owner_id,session_id)
         )
         t2 = load_context.create_task(memory_manager.read_workflow(query, tenant_id))
         t3 = load_context.create_task(memory_manager.read_entity(query, tenant_id))
@@ -117,7 +118,7 @@ async def call_agent(
     # . Store user message & extract entities concurrently
     async with asyncio.TaskGroup() as store_msg_enti:
         store_msg_enti.create_task(memory_manager.write_conversational_memory(
-                query, "user", thread_id, tenant_id, owner_id
+                query, "user", thread_id, tenant_id, owner_id,session_id
             )
         )
         # store_msg_enti.create_task(memory_manager.write_entity("",tenant_id, "","",llm_client=client, text=query))
@@ -207,6 +208,6 @@ async def call_agent(
             # save_wrk_flow_enti.create_task( memory_manager.write_entity("", tenant_id,"", "", llm_client=client, text=final_answer))
 
     await memory_manager.write_conversational_memory(
-        final_answer, "assistant", thread_id, tenant_id, owner_id
+        final_answer, "assistant", thread_id, tenant_id, owner_id,session_id
     )
     return final_answer

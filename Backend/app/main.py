@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db import init_db
 from src.vectordb.vectordb import StoreManager
-from app.routers import fileupload,conversation,tenant,chat,users,login,department
+from app.routers import fileupload,conversation,tenant,chat,users,login,department,chatsession
 from src.tools.tool import register_common_tools
 from fastapi import FastAPI
 
@@ -17,6 +17,7 @@ app.include_router(tenant.router)
 app.include_router(chat.router)
 app.include_router(users.router)
 app.include_router(login.router)
+app.include_router(chatsession.router)
 
 # CORS (Cross-Origin Resource Sharing) config
 origins = [
@@ -36,7 +37,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     # create user table and other tables if not exist
-    # await init_db()
+    await init_db()
     # create vector dbs and index
     # await StoreManager().create_db()
     #await register_common_tools()

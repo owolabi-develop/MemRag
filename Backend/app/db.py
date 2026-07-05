@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import os
 load_dotenv(override=True)
 from sqlmodel import SQLModel
-from . models import User, Tenant, Conversation, Department
+from . models import User, Tenant, Conversation, Department,ChatSession
 
 # Create async engine and session maker
 async_engine = create_async_engine(os.getenv("DATABASE_URL"), echo=True)

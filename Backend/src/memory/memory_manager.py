@@ -11,7 +11,7 @@ from pprint import pprint
 from src.llm.llm_client import client   
 from src.connection.connections import get_db_pool
 from app.db import async_session_pool
-from app.models import Conversation
+from app.models import Conversation,ChatSession
 from pgvector.asyncpg import register_vector
 import asyncpg
 from sqlmodel import select
@@ -84,29 +84,33 @@ class MemoryManager:
         return cls.pool
         
         
-    async def write_conversational_memory(self, content: str, role: str, thread_id: str, tenant_id: uuid.UUID,owner_id:uuid.UUID) -> str:
+    async def write_conversational_memory(self, content: str, role: str, thread_id: str, tenant_id: uuid.UUID,owner_id:uuid.UUID,session_id:uuid.UUID) -> str:
         # pool = await MemoryManager.get_pool()
         async with async_session_pool() as session:
+            ## get chat session
+            chat_session = await session.get(ChatSession,session_id)
             session.add(Conversation(
                 thread_id=thread_id,
                 role=role,
                 content=content,
                 tenant_id=tenant_id,
-                owner_id=owner_id
+                owner_id=owner_id,
+                session_id=session_id,
+                chatsession=chat_session,
             ))
             await session.commit()
             record_id = await session.exec(select(Conversation).where(Conversation.thread_id == thread_id))
         return record_id.first().id   
         
     
-    async def read_conversational_memory(self,thread_id: str, tenant_id: uuid.UUID,owner_id:uuid.UUID, limit: int = 10) -> str:
+    async def read_conversational_memory(self,thread_id: str, tenant_id: uuid.UUID,owner_id:uuid.UUID,session_id:uuid.UUID, limit: int = 10) -> str:
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             
             results = await con.fetch(f"""
                         SELECT content, role, con_timestamp FROM {self.conversation_table}
-                        where thread_id = $1 AND tenant_id = $2 AND owner_id = $3 AND summary_id IS NULL ORDER BY con_timestamp ASC
-                        FETCH FIRST $4 ROWS ONLY """, thread_id, tenant_id, owner_id, limit)
+                        where thread_id = $1 AND tenant_id = $2 AND owner_id = $3 AND session_id = $4  AND summary_id IS NULL ORDER BY con_timestamp ASC
+                        FETCH FIRST $5 ROWS ONLY """, thread_id, tenant_id, owner_id,session_id, limit)
             
             messages = [f"[{ts.strftime('%H:%M:%S')}] [{role}] {content}" for role, content, ts in results]
             messages_formatted = '\n'.join(messages)

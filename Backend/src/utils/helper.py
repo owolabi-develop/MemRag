@@ -160,7 +160,7 @@ async def summarize_conversation(thread_id: str) -> dict:
     return result
 
 
-async def monitor_context_window(context: str, model: str = "gpt-5-mini") -> dict:
+async def monitor_context_window(context: str, model: str = "gemini-3.5-flash") -> dict:
     """
     Monitor the current context window and return capacity utilization.
 
@@ -261,4 +261,32 @@ async def get_current_user_dpt(departments:list[uuid.UUID]):
 async def get_current_user_dpt_name(departments:list[uuid.UUID]):
      dpt =  [ dpt.name for dpt in departments]
      return dpt
+ 
+async def generate_session_title(user_query: str,model="gemini-3.5-flash"):
+    prompt = f"""
+    # Role
+
+    You are a professional conversation title generator.
+
+    # Instructions
+
+    * Generate a concise and descriptive title for the conversation.
+    * Maximum length: 30 characters.
+    * Use title case.
+    * Do not include quotation marks.
+    * Do not include punctuation unless necessary.
+    * Focus on the main topic of the user's query.
+    * Return only the title and nothing else.
+
+    User Query:
+    {user_query}
+    """
+    
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt,
+    )
+    return response.text
+
+     
  

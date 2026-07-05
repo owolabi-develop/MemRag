@@ -5,10 +5,9 @@ from enum import Enum
 from pydantic import EmailStr
 from sqlalchemy import DateTime
 from sqlmodel import Field, Relationship, SQLModel
-from typing import Optional,Any
+from typing import Optional
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import Column,TEXT
-from sqlmodel import Index,func,text
 def get_datetime_utc() -> datetime:
     return datetime.now(UTC)
 
@@ -96,6 +95,8 @@ class User(UserBase,table=True):
     )
     tenant_id: uuid.UUID | None = Field(default=None,foreign_key="tenant.id")
     departments: list[Department] = Relationship(back_populates="users",sa_relationship_kwargs={"lazy": "selectin"},link_model=DepartmentUserLink)
+    
+    chat_sessions:  list["ChatSession"] = Relationship(back_populates="user",sa_relationship_kwargs={"lazy": "selectin"})
 
 class UserPublic(UserBase):
     id: uuid.UUID
@@ -108,8 +109,27 @@ class UserCreate(UserBase):
 
 
 
+#chat session
+class ChatSessionBase(SQLModel):      
+    title:str | None = Field(unique=True,default=None, max_length=255)
+   
+    
+class ChatSession(ChatSessionBase,table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    conversations: list["Conversation"] = Relationship(back_populates="chatsession",sa_relationship_kwargs={"lazy": "selectin"})
+    con_timestamp: datetime | None = Field(index=True,
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    owner_id: uuid.UUID | None = Field(
+        foreign_key="user.id", default=None
+    )
+    user: User | None = Relationship(back_populates="chat_sessions")
+    
 
-
+class ChatSessionPublic(ChatSessionBase):
+    id:uuid.UUID
+    created_at: datetime | None = None  
 
 
 
@@ -120,7 +140,7 @@ class ConversationBase(SQLModel):
     summary_id: str | None = Field(default=None, max_length=255)
     role: str | None = Field(default=None, max_length=255)
     content: str | None =  Field(sa_type=TEXT, default=None)
-    tenant_id: uuid.UUID = Field(index=True, max_length=255)
+    tenant_id: uuid.UUID = Field(index=True)
     con_timestamp: datetime | None = Field(index=True,
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -136,8 +156,16 @@ class Conversation(ConversationBase, table=True):
     owner_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
     )
-            
-        
+    session_id: uuid.UUID | None = Field(
+        foreign_key="chatsession.id", default=None
+    )
+    chatsession: ChatSession | None = Relationship(back_populates="conversations")
+ 
+ 
+class ChatSessionPublicWithConversation(ChatSessionPublic):
+    conversations: list[ConversationPublic] = []
+
+    
 # token model
 
 class Token(SQLModel):
@@ -146,5 +174,4 @@ class Token(SQLModel):
     
 class TokenData(SQLModel):
     email: str | None = None
-
-        
+    
