@@ -6,11 +6,13 @@ from src.connection.connections import get_db_pool
 from sqlalchemy import bindparam
 from pgvector.sqlalchemy import VECTOR
 import uuid
+import json
 from sqlalchemy.dialects.postgresql import UUID,ARRAY
 
 
 
 async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], tenant_id: uuid.UUID, k: int=3):
+    
     
 
     print("department_ids",department_ids)
@@ -44,17 +46,37 @@ async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], ten
     embedding = await hug_embedding(query)
     pool = await get_db_pool()
     async with pool.acquire() as con:
+        
         results = await con.fetch(sql,query,embedding,
                                       department_ids, tenant_id,k)
 
         if not results:
-            return "No relevant documents found."
-
-    result ="\n".join([f"""
-                       Context:\n {r["content"]} \n Source: {r['metadata'].get('source','Unknown')} \n Page number: {r['metadata'].get('page_number','Unknown')}\n Department: {r['metadata'].get('department','Unknown')}""" for r in results])
-    print(f"result.......{result}")
+            return json.dumps({"documents": [], "message": "No relevant documents found."})
     
-    compress_result = await compress_prompt(result,query)
-    return compress_result
+
+    compressed_docs = []
+    
+    for r in results:
+        meta = r['metadata'] if isinstance(r['metadata'], dict) else json.loads(r['metadata'] or '{}')
+        raw_content = r["content"]
+        
+        # FIX 1: Only pass the raw text content chunk to LLMLingua
+        # This stops LLMLingua from dropping or mixing up your metadata metrics
+        compressed_content = await compress_prompt(raw_content, query)
+        
+        doc_entry = {
+            "content": compressed_content,
+            "metadata": {
+                "bbox":meta.get('bbox',[]),
+                "source": meta.get('source', 'Unknown'),
+                "section_title": meta.get("section_title"),
+                "page": meta.get('page', 'Unknown'),
+                "department": meta.get('department', 'Unknown')
+            }
+        }
+        compressed_docs.append(doc_entry)
+    return json.dumps({"documents": compressed_docs})
+
+
         
        

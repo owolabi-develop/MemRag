@@ -84,7 +84,7 @@ class MemoryManager:
         return cls.pool
         
         
-    async def write_conversational_memory(self, content: str, role: str, thread_id: str, tenant_id: uuid.UUID,owner_id:uuid.UUID,session_id:uuid.UUID) -> str:
+    async def write_conversational_memory(self, content: str, role: str, thread_id: str, tenant_id: uuid.UUID,owner_id:uuid.UUID,session_id:uuid.UUID,metadata:dict) -> str:
         # pool = await MemoryManager.get_pool()
         async with async_session_pool() as session:
             ## get chat session
@@ -97,6 +97,7 @@ class MemoryManager:
                 owner_id=owner_id,
                 session_id=session_id,
                 chatsession=chat_session,
+                con_metadata=metadata
             ))
             await session.commit()
             record_id = await session.exec(select(Conversation).where(Conversation.thread_id == thread_id))

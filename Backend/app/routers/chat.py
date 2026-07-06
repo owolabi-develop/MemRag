@@ -24,11 +24,14 @@ async def chatAgent(user_query: Annotated[str, Form()],session_id: Annotated[uui
     ## auto create new section title
     new_session_title = await generate_session_title(user_query)
     existing_sec = await session.get(ChatSession,session_id)
-    
-    #update session title
-    existing_sec.title =  new_session_title
-    session.add(existing_sec)
-    await session.commit()
+    if existing_sec.title ==  new_session_title:
+        session.add(existing_sec)
+        await session.commit()
+    else:
+        #update session title
+        existing_sec.title =  new_session_title
+        session.add(existing_sec)
+        await session.commit()
     
 
     user_dpt = await get_current_user_dpt(current_user.departments)
