@@ -8,11 +8,24 @@ from pgvector.sqlalchemy import VECTOR
 import uuid
 import json
 from sqlalchemy.dialects.postgresql import UUID,ARRAY
+from sentence_transformers import CrossEncoder
 
 
+encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2',device="cpu")
+
+      
+def re_rank(query: str, documents: list[dict], top_k: int = 5) -> list[dict]:
+   
+    passages = [doc["content"] for doc in documents]
+
+    ranked = encoder.rank(query, passages, top_k=top_k, return_documents=False)
+    # each item: {"corpus_id": int, "score": float}
+
+    # corpus_id maps back to the ORIGINAL documents list -- metadata travels
+    # with it automatically, no manual re-indexing to get wrong
+    return [documents[item["corpus_id"]] for item in ranked]
 
 async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], tenant_id: uuid.UUID, k: int=3):
-    
     
 
     print("department_ids",department_ids)
@@ -75,6 +88,7 @@ async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], ten
             }
         }
         compressed_docs.append(doc_entry)
+        compressed_docs = re_rank(query,compressed_docs)
     return json.dumps({"documents": compressed_docs})
 
 
