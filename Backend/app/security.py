@@ -9,6 +9,8 @@ from typing import Annotated
 from fastapi.security import OAuth2PasswordBearer
 import os
 import jwt
+import secrets
+import string
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -65,7 +67,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)],session
         token_data = TokenData(email=email)
     except InvalidTokenError:
         raise credentials_exception
-    user = get_user(session,email=token_data.email)
+    user = await get_user(session,email=token_data.email)
     if user is None:
         raise credentials_exception
     return user
@@ -74,9 +76,40 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)],session
 async def get_current_active_user(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    user = await current_user
+    user = current_user
     if user.is_active == False:
         raise HTTPException(status_code=400, detail="Inactive user")
     return user
 
 
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", 30))
+
+def create_password_reset_token(email: str) -> str:
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(minutes=PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
+    to_encode = {"sub": email, "exp": expires, "nbf": now, "type": "password_reset"}
+    return jwt.encode(to_encode, os.getenv("SECRET_KEY"), algorithm=os.getenv("ALGORITHM"))
+
+
+def verify_password_reset_token(token: str) -> str | None:
+    try:
+        decoded = jwt.decode(token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM")])
+        if decoded.get("type") != "password_reset":
+            return None
+        return decoded.get("sub")
+    except InvalidTokenError:
+        return None
+    
+
+def generate_temp_password(length: int = 16) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def generate_unusable_password() -> str:
+    """
+    Placeholder hash for invited users who haven't set a password yet.
+    Long random string, never given to the user, so login attempts
+    against it will always fail even if is_active were somehow True.
+    """
+    return get_password_hash(secrets.token_urlsafe(32))

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db import init_db
 from src.vectordb.vectordb import StoreManager
-from app.routers import fileupload,conversation,tenant,chat,users,login,department,chatsession
+from app.routers import fileupload,conversation,tenant,chat,users,login,department,chatsession,password
 from src.tools.tool import register_common_tools
 from fastapi import FastAPI
 
@@ -18,6 +18,7 @@ app.include_router(chat.router)
 app.include_router(users.router)
 app.include_router(login.router)
 app.include_router(chatsession.router)
+app.include_router(password.router)
 
 # CORS (Cross-Origin Resource Sharing) config
 origins = [

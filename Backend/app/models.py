@@ -8,6 +8,7 @@ from sqlmodel import Field, Relationship, SQLModel
 from typing import Optional
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import Column,TEXT
+from pydantic import BaseModel, EmailStr
 def get_datetime_utc() -> datetime:
     return datetime.now(UTC)
 
@@ -83,6 +84,7 @@ class UserBase(SQLModel):
     role: UserRole = Field(default=UserRole.USER)
     first_name: str | None = Field(default=None, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
+    must_change_password: bool = Field(default=False)
     
 
 
@@ -171,7 +173,35 @@ class ChatSessionPublicWithConversation(ChatSessionPublic):
 class Token(SQLModel):
     access_token: str
     token_type: str
+    must_change_password: bool = False
     
 class TokenData(SQLModel):
     email: str | None = None
+    
+    
+    
+    
+## password reset
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+class UpdatePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+class Message(BaseModel):
+    message: str
+    
+    
+## user invite
+class UserInvite(SQLModel):
+    email: EmailStr
+    first_name: str | None = None
+    last_name: str | None = None
+    role: UserRole = UserRole.USER
     

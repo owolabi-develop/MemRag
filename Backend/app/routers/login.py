@@ -17,9 +17,9 @@ router = APIRouter(
 
 @router.post("/")
 async def login_for_access_token(
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()], session:sessionCreator
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()], session: sessionCreator
 ) -> Token:
-    user = await authenticate_user(session,form_data.username, form_data.password)
+    user = await authenticate_user(session, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -30,4 +30,7 @@ async def login_for_access_token(
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
-    return Token(access_token=access_token, token_type="bearer")
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        must_change_password=user.must_change_password)
