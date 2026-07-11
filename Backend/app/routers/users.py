@@ -60,7 +60,7 @@ async def add_user(user: UserInvite, session: sessionCreator,current_user: Annot
             "must_change_password": True,
         },
     )
-    user_obj.tenant_id = existing_tnt_org.id
+    existing_tnt_org.users.append(user_obj)
 
     session.add(user_obj)
     await session.commit()

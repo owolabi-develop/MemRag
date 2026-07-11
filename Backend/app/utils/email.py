@@ -156,5 +156,29 @@ def generate_department_added_email(
         ),
     )
 
+def generate_department_removed_email(
+    *,
+    email_to: str,
+    department_name: str,
+    first_name: str | None = None,
+    removed_by_name: str | None = None,
+) -> EmailData:
+    frontend_host = os.getenv("FRONTEND_HOST", "http://localhost:5173")
+    dashboard_link = f"{frontend_host}/dashboard"
+
+    return EmailData(
+        template_name="department_removed.html",
+        subject=f"You've been removed from {department_name}",
+        context=_base_context(
+            {
+                "email": email_to,
+                "first_name": first_name,
+                "department_name": department_name,
+                "removed_by_name": removed_by_name,
+                "dashboard_link": dashboard_link,
+            }
+        ),
+    )
+
 if os.getenv("ENVIRONMENT") == "local":
     conf.SUPPRESS_SEND = 1

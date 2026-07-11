@@ -42,7 +42,7 @@ async def create_tenant(current_user: Annotated[User,Depends(get_current_active_
     return new_org_obj
 
 
-@router.get("/users/",response_model=list[UserPublic])
+@router.get("/current/user/",response_model=list[UserPublic])
 async def get_tenant_user(session:sessionCreator,current_user: Annotated[User,Depends(get_current_active_user)]):
     
     if current_user.role != UserRole.ADMIN:
@@ -50,9 +50,18 @@ async def get_tenant_user(session:sessionCreator,current_user: Annotated[User,De
     
     existing_user = await session.exec(select(User).where(User.tenant_id == current_user.tenant_id))
     
-    
     return existing_user 
+
+@router.get("/invited/users/",response_model=list[UserPublic])
+async def get_tenant_user(session:sessionCreator,current_user: Annotated[User,Depends(get_current_active_user)]):
     
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Only organization administrators can perform this action.")
+    if current_user.tenant_id is None:
+        return []
+    existing_tenant_user = await session.get(Tenant,current_user.tenant_id)
+    users = list(filter(lambda x:x.status=="pending" or x.status=="accepted",existing_tenant_user.users))
+    return users
 
 @router.get("/",response_model=TenantPublicWithDept)
 async def get_tenant(current_user: Annotated[User,Depends(get_current_active_user)], session:sessionCreator):

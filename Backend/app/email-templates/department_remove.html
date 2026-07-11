@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}You've been removed from {{ department_name }}{% endblock %}
+
+{% block content %}
+  <h1 style="margin:0 0 16px; font-size:20px; color:#111827;">You've been removed from a department</h1>
+
+  <p style="margin:0 0 16px; font-size:14px; line-height:22px; color:#374151;">
+    Hi{% if first_name %} {{ first_name }}{% endif %},
+  </p>
+
+  <p style="margin:0 0 24px; font-size:14px; line-height:22px; color:#374151;">
+    {% if removed_by_name %}<strong>{{ removed_by_name }}</strong>{% else %}An administrator{% endif %}
+    has removed you from the <strong>{{ department_name }}</strong> department on {{ app_name }}.
+    You no longer have access to the resources, conversations, and content associated with this department.
+  </p>
+
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:24px; width:100%;">
+    <tr>
+      <td style="border-radius:6px; border:1px solid #e5e7eb; background-color:#f9fafb; padding:16px 20px;">
+        <p style="margin:0 0 4px; font-size:12px; font-weight:600; letter-spacing:0.4px; text-transform:uppercase; color:#6b7280;">
+          Department
+        </p>
+        <p style="margin:0; font-size:15px; font-weight:600; color:#111827;">
+          {{ department_name }}
+        </p>
+      </td>
+    </tr>
+  </table>
+
+  <table role="presentation" cellpadding="0" cellspacing="0">
+    <tr>
+      <td style="border-radius:6px; background-color:#111827;">
+        <a href="{{ dashboard_link }}"
+           style="display:inline-block; padding:12px 28px; font-size:14px; font-weight:600; color:#ffffff; text-decoration:none; border-radius:6px;">
+          Go to {{ app_name }}
+        </a>
+      </td>
+    </tr>
+  </table>
+
+  <p style="margin:24px 0 0; font-size:13px; line-height:20px; color:#6b7280;">
+    If you believe you were removed from this department in error, please contact your administrator.
+  </p>
+{% endblock %}

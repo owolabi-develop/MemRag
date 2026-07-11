@@ -39,6 +39,7 @@ class TenantBase(SQLModel):
 class Tenant(TenantBase,table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True) 
     departments: list["Department"] = Relationship(back_populates="tenant",sa_relationship_kwargs={"lazy": "selectin"})
+    users: list[User] = Relationship(back_populates="tenant",sa_relationship_kwargs={"lazy": "selectin"})
     
 class TenantCreate(TenantBase):
     pass
@@ -102,6 +103,7 @@ class User(UserBase,table=True):
         sa_type=DateTime(timezone=True),  # type: ignore
     )
     tenant_id: uuid.UUID | None = Field(default=None,foreign_key="tenant.id")
+    tenant: Tenant | None = Relationship(back_populates="users")
     departments: list[Department] = Relationship(back_populates="users",sa_relationship_kwargs={"lazy": "selectin"},link_model=DepartmentUserLink)
     
     chat_sessions:  list["ChatSession"] = Relationship(back_populates="user",sa_relationship_kwargs={"lazy": "selectin"})
@@ -210,4 +212,5 @@ class UserInvite(SQLModel):
     first_name: str | None = None
     last_name: str | None = None
     role: UserRole = UserRole.USER
+    status:UserInvite = UserInvite.PENDING
     
