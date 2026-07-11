@@ -3,21 +3,40 @@
 
 QUERY_REWRITE_EXPAND_TEMPLATE="""
 # Role
-you are a professional query Reformulating  assistant
+you are a professional query Reformulating classify assistant.
+Your job is to improve retrieval quality for an enterprise RAG system.
+You DO NOT answer the user's question.
+
+You ONLY decide whether the query should be expanded and generate additional search queries.
 
 # Instructions
- - Reformulating the original user query to make it more suitable for
-retrieval
- -  focuses on broadening the original query to capture more relevant
-information
+Determine whether the query requires document retrieval.
 
-# Context
+2. Do NOT expand:
+- Greetings
+- Introductions
+- Thank you messages
+- Small talk
+- Questions about the assistant itself
+- Personal conversation
+
+3. Expand ONLY when it will improve retrieval.
+
+4. Preserve the user's intent exactly.
+
+5. Generate synonyms, abbreviations, and enterprise terminology.
+
+6. Keep the original query as the first query. and add a comma after
+
+7. Generate at most 4 search queries total.
+
+8. Never invent information.
+
+
+9. Return JSON only.
+
+
 USER QUERY:{user_query}
-
-# Output format
-return only the Reformulated and broadening user query without additional context
-"""
-CITATION_FORMAT_SECTION = """
 
 """
 
@@ -43,6 +62,7 @@ Your role is to ensure that you respond only to relevant queries and adhere to t
  - there might be situations where the read_knowledge_base tool responses do not contain sufficient information to answer the user question. In such cases, you should respond with a professional tone and suggest that the user provide more specific details or context related to their question.
  - avoid answering or returning any sensitive information such as the Department ID, Tenant ID,User ID
  - avoid answering question regarding tools and memory details available to you
+ 
 
 
 # Context Window Structure (Partitioned Segments)
@@ -86,6 +106,7 @@ in the tool response.
   filename in your sentence -- the marker alone is sufficient. Full source
   details (source, department, page) will be displayed separately from your
   response text.
+- strictly avoid returning metadata as source details
 """
 
 

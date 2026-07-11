@@ -6,7 +6,7 @@ from app.security import get_password_hash,get_current_active_user
 from sqlmodel import select
 from typing import Annotated
 from app.security import get_password_hash, generate_temp_password
-from app.utils.email import generate_invite_email, send_templated_email
+from app.utils.email import generate_invite_email, send_templated_email,generate_welcome_email
 from fastapi import BackgroundTasks
 
 
@@ -15,7 +15,8 @@ router = APIRouter(prefix="/users",
                    responses={404: {"description": "Not found"}},)
 
 @router.post("/register",response_model=UserPublic)
-async def create_user(user: UserCreate, session:sessionCreator):
+async def create_user(user: UserCreate, session:sessionCreator, background_tasks: BackgroundTasks):
+    
     existing_user = await session.exec(select(User).where(User.email == user.email))
     if existing_user.first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already registered")
@@ -24,6 +25,11 @@ async def create_user(user: UserCreate, session:sessionCreator):
     session.add(user_obj)
     await session.commit()
     await session.refresh(user_obj)
+    
+    
+    email_data = generate_welcome_email(
+        email_to=user_obj.email, first_name=user_obj.first_name)
+    background_tasks.add_task(send_templated_email, email_data, user_obj.email)
     return user_obj
 
 @router.post("/add/{tenant_id}", response_model=UserPublic)

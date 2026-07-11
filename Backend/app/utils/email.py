@@ -113,5 +113,48 @@ def generate_invite_email(
         ),
     )
     
+    
+def generate_welcome_email(
+    *, email_to: str, first_name: str | None = None
+) -> EmailData:
+    frontend_host = os.getenv("FRONTEND_HOST", "http://localhost:5173")
+    login_link = f"{frontend_host}/login"
+
+    return EmailData(
+        template_name="welcome_user.html",
+        subject=f"Welcome to {APP_NAME}!",
+        context=_base_context(
+            {
+                "email": email_to,
+                "first_name": first_name,
+                "login_link": login_link,
+            }
+        ),
+    )
+
+def generate_department_added_email(
+    *,
+    email_to: str,
+    department_name: str,
+    first_name: str | None = None,
+    added_by_name: str | None = None,
+) -> EmailData:
+    frontend_host = os.getenv("FRONTEND_HOST", "http://localhost:5173")
+    dashboard_link = f"{frontend_host}/dashboard"
+
+    return EmailData(
+        template_name="department_added.html",
+        subject=f"You've been added to {department_name}",
+        context=_base_context(
+            {
+                "email": email_to,
+                "first_name": first_name,
+                "department_name": department_name,
+                "added_by_name": added_by_name,
+                "dashboard_link": dashboard_link,
+            }
+        ),
+    )
+
 if os.getenv("ENVIRONMENT") == "local":
     conf.SUPPRESS_SEND = 1

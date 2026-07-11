@@ -17,6 +17,11 @@ class UserRole(str,Enum):
     ADMIN = "admin"
     MANAGER = "manager"
     USER = "employee"
+    
+class UserInvite(str,Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    MAIN = "main"
 
 
 
@@ -82,6 +87,7 @@ class UserBase(SQLModel):
     is_active: bool = True
     is_superuser: bool = False
     role: UserRole = Field(default=UserRole.USER)
+    status: UserInvite = Field(default=UserInvite.MAIN)
     first_name: str | None = Field(default=None, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
     must_change_password: bool = Field(default=False)

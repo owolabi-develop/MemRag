@@ -68,7 +68,7 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
     string, so callers can render inline markers and a source panel.
     """
 
-    query = user_query
+    query = await query_rewrite_expand(user_query) 
     print("query.......")
     print(query)
     thread_id = str(owner_id)
@@ -105,7 +105,7 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
 
     context = f"# Question\n{query}\n\n Department ID{department_id}\n\n #Tenant ID{tenant_id}\n\n{memory_context} \n Department Name: {departments}\n current userName: {user_details}"
 
-    dynamic_tools = await memory_manager.read_toolbox(query, k=5)
+    dynamic_tools = await memory_manager.read_toolbox(query, k=6)
     print("Tools:")
 
     async with asyncio.TaskGroup() as store_msg_enti:

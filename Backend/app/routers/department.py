@@ -4,6 +4,8 @@ from app.dependencies import sessionCreator
 from app.models import User, DepartmentCreate,DepartmentPublic,Department,UserRole
 from app.security import get_password_hash,get_current_active_user
 from sqlmodel import select
+from fastapi import BackgroundTasks
+from app.utils.email import generate_department_added_email, send_templated_email
 from typing import Annotated
 
 
@@ -50,7 +52,7 @@ async def get_departments(session:sessionCreator,current_user: Annotated[User,De
 
 
 @router.post("/add/user/{department_id}/{user_id}",response_model=DepartmentPublic)
-async def add_user(user_id:str, session:sessionCreator,current_user: Annotated[User,Depends(get_current_active_user)],department_id:str):
+async def add_user(user_id:str, session:sessionCreator,current_user: Annotated[User,Depends(get_current_active_user)],department_id:str,background_tasks: BackgroundTasks):
     existing_user = await session.get(User,user_id)
     
     if existing_user is None:
@@ -68,8 +70,19 @@ async def add_user(user_id:str, session:sessionCreator,current_user: Annotated[U
     await session.refresh(existing_dpt_obj)
     
     ## get tenant org
+    ## send email
     
-    
+    added_by_name = " ".join(
+        filter(None, [current_user.first_name, current_user.last_name])
+    ) or current_user.email
+
+    email_data = generate_department_added_email(
+        email_to=existing_user.email,
+        department_name=existing_dpt_org.name,
+        first_name=existing_user.first_name,
+        added_by_name=added_by_name,
+    )
+    background_tasks.add_task(send_templated_email, email_data, existing_user.email)
     return existing_dpt_obj
 
    
