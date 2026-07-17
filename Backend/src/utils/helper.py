@@ -288,5 +288,34 @@ async def generate_session_title(user_query: str,model="gemini-3.5-flash"):
     )
     return response.text
 
+
+
+async def get_total_documents_by_tenant(tenant_id: str) -> int:
+    pool = await get_db_pool()
+    async with pool.acquire() as con:
+        row = await con.fetchrow(
+            """
+            SELECT COUNT(DISTINCT id) AS total_documents
+            FROM SEMANTIC_MEMORY
+            WHERE tenant_id = $1
+            """,
+            tenant_id,
+        )
+        return row["total_documents"] if row else 0
+    
+async def get_total_documents_by_department(department_id:uuid.UUID,tenant_id:uuid.UUID) -> int:
+    pool = await get_db_pool()
+    async with pool.acquire() as con:
+        row = await con.fetchrow(
+            """
+            SELECT COUNT(DISTINCT id) AS total_documents
+            FROM SEMANTIC_MEMORY
+            WHERE department_id = $1 AND tenant_id = $2
+            """,
+            department_id,
+            tenant_id
+        )
+        return row["total_documents"] if row else 0
+
      
  

@@ -112,6 +112,7 @@ async def set_initial_password(
     current_user.hashed_password = get_password_hash(body.new_password)
     current_user.must_change_password = False
     current_user.status = "accepted"
+    current_user.invited = True
     session.add(current_user)
     await session.commit()
 

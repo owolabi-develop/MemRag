@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   HardDrive,
   Database,
-  CloudCog,
   Box,
   CheckCircle2,
   Link2,
@@ -10,6 +9,7 @@ import {
   ChevronDown,
   Folder,
   FileText,
+  Upload,
   AlertCircle,
   Loader2,
   RefreshCw,
@@ -19,8 +19,18 @@ import {
   useConnectorStatusQuery,
   useDisconnectMutation,
   useSyncDocumentsMutation,
+  useConnectGoogleDriveMutation
 } from "../../shared/hooks/useConnectors";
 import type { ConnectorId, RemoteItem } from "../../shared/api/connectors.api";
+
+import { getDepartments } from "../../shared/api/department.api";
+import { useAuthStore } from "../../shared/store/authStore";
+import type { DepartmentOption } from "../../shared/types/department";
+import {
+  useLoaderData,
+  redirect,
+  type LoaderFunctionArgs,
+} from "react-router";
 
 interface CredentialField {
   name: string;
@@ -35,26 +45,20 @@ interface ConnectorConfig {
   description: string;
   icon: typeof HardDrive;
   accent: string;
+  // Text-field based connectors (S3, Dropbox) use `fields`.
   fields: CredentialField[];
+  // File-based connectors (Google Drive service account JSON) use this
+  // instead — mutually exclusive with `fields` at the UI level.
+  fileField?: {
+    name: string;
+    label: string;
+    accept: string;
+    helperText?: string;
+  };
 }
 
-const DEPARTMENTS = [
-  { id: "1", name: "Engineering" },
-  { id: "2", name: "Finance" },
-];
 
 const CONNECTORS: ConnectorConfig[] = [
-  {
-    id: "google_drive",
-    name: "Google Drive",
-    description: "Sync documents stored in your organization's Google Drive.",
-    icon: HardDrive,
-    accent: "blue",
-    fields: [
-      { name: "client_email", label: "Service Account Email" },
-      { name: "private_key", label: "Private Key", type: "password" },
-    ],
-  },
   {
     id: "amazon_s3",
     name: "Amazon S3",
@@ -66,18 +70,7 @@ const CONNECTORS: ConnectorConfig[] = [
       { name: "secret_access_key", label: "Secret Access Key", type: "password" },
       { name: "bucket_name", label: "Bucket Name" },
       { name: "region", label: "Region", placeholder: "us-east-1" },
-    ],
-  },
-  {
-    id: "onedrive",
-    name: "OneDrive",
-    description: "Sync files from a connected OneDrive / SharePoint account.",
-    icon: CloudCog,
-    accent: "sky",
-    fields: [
-      { name: "client_id", label: "Client ID" },
-      { name: "client_secret", label: "Client Secret", type: "password" },
-      { name: "tenant_id", label: "Tenant ID" },
+      { name: "endpoint_url", label: "Endpoint Url", placeholder: "optional.." },
     ],
   },
   {
@@ -90,6 +83,21 @@ const CONNECTORS: ConnectorConfig[] = [
       { name: "access_token", label: "Access Token", type: "password", placeholder: "sl.xxxxxxxx" },
       { name: "folder_path", label: "Folder Path", placeholder: "/pdfs" },
     ],
+  },
+  {
+    id: "google_drive",
+    name: "Google Drive",
+    description: "Sync documents shared with your service account on Google Drive.",
+    icon: HardDrive,
+    accent: "blue",
+    fields: [],
+    fileField: {
+      name: "credentials_file",
+      label: "Service Account JSON Key",
+      accept: "application/json,.json",
+      helperText:
+        "The JSON key file downloaded when you created the service account. Make sure you've shared the relevant Drive folder with its client_email first.",
+    },
   },
 ];
 
@@ -208,7 +216,18 @@ function MultiSelectDropdown({
   );
 }
 
+export async function ConnectorsDepartmentLoader({}: LoaderFunctionArgs) {
+  const token = useAuthStore.getState().accessToken;
+  if (!token) {
+    return redirect("/login");
+  }
+
+  const departments = await getDepartments();
+  return { departments };
+}
+
 function ConnectorCard({ config }: { config: ConnectorConfig }) {
+  const { departments } = useLoaderData() as { departments: DepartmentOption[] };
   const Icon = config.icon;
   const accent = ACCENT_CLASSES[config.accent];
 
@@ -216,27 +235,68 @@ function ConnectorCard({ config }: { config: ConnectorConfig }) {
   const connectMutation = useConnectMutation(config.id);
   const disconnectMutation = useDisconnectMutation(config.id);
   const syncMutation = useSyncDocumentsMutation();
+  const connectGoogleDriveMutation = useConnectGoogleDriveMutation();
 
   const [departmentId, setDepartmentId] = useState("");
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [departmentError, setDepartmentError] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
-  const isConnected = statusQuery.data?.status === "connected";
-  const items = statusQuery.data?.items ?? [];
+  // Local override, set the moment a connect call succeeds — used instead
+  // of waiting on statusQuery to refetch, since that refetch depends on
+  // an invalidation key we haven't confirmed matches this hook's real
+  // queryKey yet. Once that's verified, statusQuery.data alone would be
+  // enough and this local state could be dropped.
+  const [localConnected, setLocalConnected] = useState<{
+    status: "connected";
+    items: RemoteItem[];
+  } | null>(null);
+
+  const isConnected =
+    localConnected !== null || statusQuery.data?.status === "connected";
+  const items = localConnected?.items ?? statusQuery.data?.items ?? [];
 
   function handleConnect(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setFileError(null);
     const formData = new FormData(event.currentTarget);
+
+    if (config.fileField) {
+      const file = formData.get(config.fileField.name) as File | null;
+      if (!file || file.size === 0) {
+        setFileError("Please select a file.");
+        return;
+      }
+      const body = new FormData();
+      body.append(config.fileField.name, file);
+      connectGoogleDriveMutation.mutate(body, {
+        onSuccess: (data) => {
+          // data.items may legitimately be [] (nothing shared with the
+          // service account yet, or an empty folder) — that's fine, we
+          // still want to show the connected view either way.
+          setLocalConnected({ status: "connected", items: data.items ?? [] });
+        },
+      });
+      return;
+    }
+
     const credentials = Object.fromEntries(
       config.fields.map((field) => [field.name, String(formData.get(field.name) ?? "")])
     );
-    connectMutation.mutate(credentials);
+    connectMutation.mutate(credentials, {
+      onSuccess: (data) => {
+        setLocalConnected({ status: "connected", items: data.items ?? [] });
+      },
+    });
   }
 
   function handleDisconnect() {
     setDepartmentId("");
     setSelectedPaths([]);
+    setSelectedFileName(null);
+    setLocalConnected(null);
     syncMutation.reset();
     disconnectMutation.mutate();
   }
@@ -312,7 +372,8 @@ function ConnectorCard({ config }: { config: ConnectorConfig }) {
         )}
       </div>
 
-      {!isConnected && (
+      {/* Connect form — text-field variant (S3, Dropbox) */}
+      {!isConnected && !config.fileField && (
         <form onSubmit={handleConnect} className="mt-5 space-y-4 border-t border-neutral-100 pt-5">
           {config.fields.map((field) => (
             <div key={field.name}>
@@ -339,6 +400,80 @@ function ConnectorCard({ config }: { config: ConnectorConfig }) {
             className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-neutral-900 text-white transition-opacity hover:opacity-90 disabled:opacity-60"
           >
             {connectMutation.isPending ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Connecting...
+              </>
+            ) : (
+              <>
+                <Link2 size={16} />
+                Connect {config.name}
+              </>
+            )}
+          </button>
+        </form>
+      )}
+
+      {/* Connect form — file-upload variant (Google Drive) */}
+      {!isConnected && config.fileField && (
+        <form onSubmit={handleConnect} className="mt-5 space-y-4 border-t border-neutral-100 pt-5">
+          <div>
+            <label className="mb-2 block text-sm font-medium">
+              {config.fileField.label}
+            </label>
+
+            <label
+              className={`flex h-24 w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 text-center transition-colors ${
+                fileError
+                  ? "border-red-300 bg-red-50/40"
+                  : "border-neutral-300 bg-neutral-50/50 hover:border-neutral-400 hover:bg-neutral-50"
+              }`}
+            >
+              <input
+                name={config.fileField.name}
+                type="file"
+                accept={config.fileField.accept}
+                className="hidden"
+                onChange={(e) => {
+                  setSelectedFileName(e.target.files?.[0]?.name ?? null);
+                  setFileError(null);
+                }}
+              />
+              <Upload size={18} className="text-neutral-400" />
+              <span className="text-sm text-neutral-600">
+                {selectedFileName ?? (
+                  <>
+                    <span className="font-medium underline">Click to upload</span> your key file
+                  </>
+                )}
+              </span>
+            </label>
+
+            {config.fileField.helperText && (
+              <p className="mt-1.5 text-xs text-neutral-400">{config.fileField.helperText}</p>
+            )}
+
+            {fileError && (
+              <div className="mt-2 flex items-center gap-1.5 text-sm text-red-600">
+                <AlertCircle size={14} />
+                {fileError}
+              </div>
+            )}
+          </div>
+
+          {connectGoogleDriveMutation.isError && (
+            <div className="flex items-center gap-1.5 text-sm text-red-600">
+              <AlertCircle size={14} />
+              {(connectGoogleDriveMutation.error as Error).message}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={connectGoogleDriveMutation.isPending}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-neutral-900 text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+          >
+            {connectGoogleDriveMutation.isPending ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
                 Connecting...
@@ -385,7 +520,7 @@ function ConnectorCard({ config }: { config: ConnectorConfig }) {
               }`}
             >
               <option value="">Select department</option>
-              {DEPARTMENTS.map((d) => (
+              {departments.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
                 </option>
@@ -453,8 +588,7 @@ export default function Connectors() {
           </p>
         </div>
 
-        
-          <a href="/dashboard/connectors"
+        <a href="/dashboard/connectors"
           className="text-sm font-medium text-neutral-500 underline underline-offset-2 hover:text-neutral-900"
         >
           Manage

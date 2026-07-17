@@ -1,14 +1,15 @@
 from llmlingua import PromptCompressor
 from src.prompts.prompts import COMPRESS_INSTRUCTION_TEMPLATE
 
-llm_lingua = PromptCompressor(
-    model_name="microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank",
-    device_map="cpu",
-    use_llmlingua2=True)
+
 
 
 
 async def compress_prompt(demonstration_str: str,question:str):
+    llm_lingua = PromptCompressor(
+    model_name="microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank",
+    device_map="cpu",
+    use_llmlingua2=True)
     
     compressed_prompt = llm_lingua.compress_prompt(
     context=demonstration_str,

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db import init_db
 from src.vectordb.vectordb import StoreManager
-from app.routers import fileupload,conversation,tenant,chat,users,login,department,chatsession,password
+from app.routers import fileupload,conversation,tenant,chat,users,login,department,chatsession,password,connectors
 from src.tools.tool import register_common_tools
 from fastapi import FastAPI
 
@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 app = FastAPI(title="Mem Agentic Rag",
               summary="Agentic Rag with advance memory with semantic tool management")
+app.include_router(connectors.router)
 app.include_router(fileupload.router)
 app.include_router(department.router)
 app.include_router(conversation.router)

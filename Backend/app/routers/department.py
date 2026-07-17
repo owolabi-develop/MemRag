@@ -1,12 +1,14 @@
 from fastapi import APIRouter,status
 from fastapi import Depends, HTTPException
 from app.dependencies import sessionCreator
-from app.models import User, DepartmentCreate,DepartmentPublic,Department,UserRole
+from app.models import User, DepartmentCreate,DepartmentPublic,Department,UserRole,Document
 from app.security import get_password_hash,get_current_active_user
 from sqlmodel import select
 from fastapi import BackgroundTasks
 from app.utils.email import generate_department_added_email,generate_department_removed_email, send_templated_email
 from typing import Annotated
+import uuid
+from app.utils.s3_storage import generate_presigned_url 
 
 
 router = APIRouter(prefix="/departments",
@@ -131,6 +133,37 @@ async def remove_user(user_id: str,session: sessionCreator,
     return existing_dpt_org
 
    
+
+@router.get("/documents/{document_id}/view")
+async def view_document(
+    document_id:uuid.UUID,
+    session: sessionCreator,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
+    # Find document
+    document = await session.get(Document, document_id)
+
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    # Ensure it belongs to the user's tenant
+    if document.tenant_id != current_user.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this document.",
+        )
+
+    url = url = await generate_presigned_url(document.object_key)
+
+    return {
+        "id": document.id,
+        "filename": document.filename,
+        "url": url,
+        "content_type": document.content_type,
+    }
 
 
 

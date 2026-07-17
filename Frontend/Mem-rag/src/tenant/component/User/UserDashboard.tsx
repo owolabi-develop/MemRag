@@ -1,31 +1,37 @@
-import { Link } from "react-router";
-import { MessageSquare, Building2,Users } from "lucide-react";
+// pages/UserDashboard.tsx
+
+import { Link, redirect, useLoaderData, type LoaderFunctionArgs } from "react-router";
+import { MessageSquare, Building2 } from "lucide-react";
 import groundly_logo from "../../../assets/images/Groundly-logo.png";
+import { getDepartmentsForUser } from "../../../shared/api/department.api";
+import type { Department } from "../../../shared/types/department";
+import { useAuthStore } from "../../../shared/store/authStore";
 
-type Department = {
-  id: string;
-  name: string;
-  description: string;
-  documentCount: number;
-  memberCount: number;
-};
+export async function userDashboardLoader({}: LoaderFunctionArgs) {
+  const token = useAuthStore.getState().accessToken;
+  if (!token) {
+    return redirect("/login");
+  }
 
-// Replace with real data from your loader — empty array shows the "no department" state
-const DEPARTMENTS: Department[] = [
-  {
-    id: "eng",
-    name: "Engineering",
-    description: "Technical documentation, architecture decisions, and runbooks.",
-    documentCount: 128,
-    memberCount: 14,
-  },
-];
+  const departments = await getDepartmentsForUser();
+  return { departments };
+}
 
-// Replace with real user data from your loader/auth context
-const USER = { name: "John Doe", initials: "JD" };
+function formatDate(dateString: string) {
+  return new Date(dateString).toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 export default function UserDashboard() {
-  const hasDepartments = DEPARTMENTS.length > 0;
+  const { departments } = useLoaderData() as { departments:  Department[] };
+  const user = useAuthStore((s) => s.user);
+
+  const hasDepartments = departments.length > 0;
+  const displayName = user?.first_name || "there";
+  const initials = user?.email ? user.email.slice(0, 2).toUpperCase() : "??";
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -40,7 +46,7 @@ export default function UserDashboard() {
           </div>
 
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-900 text-xs font-medium text-white">
-            {USER.initials}
+            {initials}
           </div>
         </div>
       </header>
@@ -49,7 +55,7 @@ export default function UserDashboard() {
       <main className="mx-auto max-w-3xl px-6 py-10">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-            Welcome back, {USER.name.split(" ")[0]}
+            Welcome back, {displayName.split(" ")[0]}
           </h1>
           <p className="mt-1 text-sm text-neutral-500">
             {hasDepartments
@@ -61,36 +67,27 @@ export default function UserDashboard() {
         {/* Departments */}
         <section className="mt-8">
           <h2 className="text-sm font-semibold text-neutral-900">
-            Your department{DEPARTMENTS.length !== 1 ? "s" : ""}
+            Your department{departments.length !== 1 ? "s" : ""}
           </h2>
 
           {hasDepartments ? (
             <div className="mt-3 space-y-3">
-              {DEPARTMENTS.map((dept) => (
+              {departments.map((dept) => (
                 <div
                   key={dept.id}
                   className="rounded-xl border border-neutral-200 bg-white p-5"
                 >
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100">
+                      <Building2 size={16} className="text-neutral-600" />
+                    </div>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100">
-                          <Building2 size={16} className="text-neutral-600" />
-                        </div>
-                        <h3 className="text-sm font-semibold text-neutral-900">
-                          {dept.name}
-                        </h3>
-                      </div>
-                      <p className="mt-2 text-sm leading-5 text-neutral-500">
-                        {dept.description}
+                      <h3 className="text-sm font-semibold text-neutral-900">
+                        {dept.name}
+                      </h3>
+                      <p className="mt-0.5 text-xs text-neutral-400">
+                        Added {formatDate(dept.created_at)}
                       </p>
-                      <div className="mt-3 flex items-center gap-4 text-xs text-neutral-400">
-                        <span>{dept.documentCount} documents</span>
-                        <span className="flex items-center gap-1">
-                          <Users size={12} />
-                          {dept.memberCount} members
-                        </span>
-                      </div>
                     </div>
                   </div>
 

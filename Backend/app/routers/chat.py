@@ -1,18 +1,19 @@
 from fastapi import APIRouter,status
 from fastapi import Depends, HTTPException
 from app.dependencies import sessionCreator
-from app.models import User, Tenant, Conversation,ChatSession
+from app.models import User, Tenant, Conversation,ChatSession,FeedBack,FeedBackPublic,CreateFeedBack,UpdateFeedBack
 from fastapi import UploadFile, Form
 from typing import Annotated
 from app.security import get_current_active_user
 from src.agent_call import call_agent
 import uuid
 
-router = APIRouter()
+router = APIRouter(prefix="/chat",
+                   tags=['chats'])
 from src.utils.helper import (get_current_user_dpt,
                               get_current_user_dpt_name,generate_session_title)
 
-@router.post("/chat/",tags=["chat"])
+@router.post("/")
 async def chatAgent(user_query: Annotated[str, Form()],session_id: Annotated[uuid.UUID, Form()],current_user:Annotated[User, Depends(get_current_active_user)],session:sessionCreator):
     if current_user.departments is None or len(current_user.departments) == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"User {current_user.first_name} does not belong to any department.")
@@ -24,9 +25,7 @@ async def chatAgent(user_query: Annotated[str, Form()],session_id: Annotated[uui
     ## auto create new section title
     new_session_title = await generate_session_title(user_query)
     existing_sec = await session.get(ChatSession,session_id)
-    if existing_sec.title:
-       pass
-    else:
+    if existing_sec.title =="new":
         #update session title
         existing_sec.title =  new_session_title
         session.add(existing_sec)
@@ -38,3 +37,41 @@ async def chatAgent(user_query: Annotated[str, Form()],session_id: Annotated[uui
     
    
     return {"response": response}
+
+@router.post("/feedback", response_model=FeedBackPublic, status_code=status.HTTP_201_CREATED)
+async def create_feedback(
+    feedback_in: CreateFeedBack,
+    session: sessionCreator,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
+    feedback = FeedBack(**feedback_in.model_dump(), user_id=current_user.id)
+    session.add(feedback)
+    await session.commit()
+    await session.refresh(feedback)
+    return feedback
+
+
+@router.patch("/feedback/{feedback_id}", response_model=FeedBackPublic)
+async def update_feedback(
+    feedback_id: uuid.UUID,
+    feedback_in: UpdateFeedBack,
+    session: sessionCreator,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
+    feedback = await session.get(FeedBack, feedback_id)
+    if feedback is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found"
+        )
+
+    if feedback.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only update your own feedback.",
+        )
+
+    feedback.thumb = feedback_in.thumb
+    session.add(feedback)
+    await session.commit()
+    await session.refresh(feedback)
+    return feedback

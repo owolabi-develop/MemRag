@@ -15,7 +15,7 @@ router = APIRouter(
     tags=['login']
 )
 
-@router.post("/")
+@router.post("")
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()], session: sessionCreator
 ) -> Token:
@@ -33,4 +33,9 @@ async def login_for_access_token(
     return Token(
         access_token=access_token,
         token_type="bearer",
+        role=user.role,
+        first_name = user.first_name,
+        last_name = user.last_name,
+        invited=user.invited,
+        status=user.status,
         must_change_password=user.must_change_password)

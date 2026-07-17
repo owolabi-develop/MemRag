@@ -18,10 +18,10 @@ async def google_embedding(content:str,model_output_dimensionality:int=1536):
     return embedding_obj.values
 
 
-model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
+
 
 async def hug_embedding(content: str):
-  
+    model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
     loop = asyncio.get_running_loop()
 
     embedding = await loop.run_in_executor(

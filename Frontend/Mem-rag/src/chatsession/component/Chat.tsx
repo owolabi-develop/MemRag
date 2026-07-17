@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { useNavigate } from "react-router";
+import { Document, Page, pdfjs } from "react-pdf";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
+
+// react-pdf needs a worker script — pointed at a CDN matching the
+// installed pdfjs-dist version rather than fighting Vite's bundler
+// over worker asset paths. Fine for now; self-host later if you'd
+// rather not depend on unpkg in production.
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 import {
   Plus,
   SendHorizontal,
@@ -21,29 +30,33 @@ import {
 } from "lucide-react";
 import {
   useCreateSessionMutation,
-  useDepartmentQuery,
+  useDepartmentsQuery,
+  useDocumentViewMutation,
   useFeedbackMutation,
   useSendMessageMutation,
   useSessionQuery,
   useSessionsQuery,
 } from "../../shared/hooks/useChat";
 import { useChatUiStore } from "../../shared/store/chatUiStore";
-import type { ChatSessionSummary, ConversationTurn, FeedbackValue } from "../../chatsession/type/type";
-
-// TODO: replace with real session/auth data once wired up, e.g.
-//   const { user } = useAuthStore();
-const mockUser = { name: "Owolabi Akintan", email: "owolabi@company.com" };
+import { useAuthStore } from "../../shared/store/authStore";
+import type { ChatSessionSummary, Citation, ConversationTurn } from "../../chatsession/type/type";
+import groundly_logo from "../../assets/images/Groundly-logo.png"; // adjust path to match your project structure
 
 function getInitials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
+  const parts = name.split(" ").filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
 }
 
-function formatRelativeTime(dateString: string) {
+/**
+ * created_at can be null (confirmed from the real /session/user/sessions
+ * response) — everything with a null date buckets into "Recent" rather
+ * than crashing on `new Date(null)`.
+ */
+function formatRelativeTime(dateString: string | null) {
+  if (!dateString) return "Recent";
   const diffMs = Date.now() - new Date(dateString).getTime();
   const diffHours = diffMs / (1000 * 60 * 60);
   if (diffHours < 24) return "Today";
@@ -58,7 +71,7 @@ function groupSessions(sessions: ChatSessionSummary[]) {
     const bucket = formatRelativeTime(session.created_at);
     groups[bucket] = groups[bucket] ? [...groups[bucket], session] : [session];
   }
-  const order = ["Today", "Yesterday", "Previous 7 days", "Older"];
+  const order = ["Recent", "Today", "Yesterday", "Previous 7 days", "Older"];
   return order.filter((key) => groups[key]?.length).map((key) => ({ label: key, sessions: groups[key] }));
 }
 
@@ -73,14 +86,12 @@ function SessionListSkeleton() {
 }
 
 /**
- * Left panel — dark navigation rail, matching the reference: plain
- * text nav rows (no filled CTA), no per-item icons, account footer
- * with a working "back to dashboard" and "log out". Fixed-width,
- * full-height, static on md+; a slide-over drawer with its own
- * in-panel collapse icon on small screens.
+ * Left panel — light navigation rail with the Groundly wordmark,
+ * plain-text nav rows, account footer with a working "back to
+ * dashboard" and "log out". Fixed-width, full-height, static on
+ * md+; a slide-over drawer with its own in-panel collapse icon on
+ * small screens.
  */
-import groundly_logo from "../../assets/images/Groundly-logo.png"; // adjust path to match your project structure
-
 function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const sessionsQuery = useSessionsQuery();
   const createSessionMutation = useCreateSessionMutation();
@@ -88,6 +99,11 @@ function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
   const setActiveSessionId = useChatUiStore((s) => s.setActiveSessionId);
   const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
+  const { user, clearAuth } = useAuthStore();
+  const displayName = user
+    ? [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || user.email
+    : "Account";
+  const displayEmail = user?.email ?? "";
 
   function handleNewChat() {
     createSessionMutation.mutate(undefined, {
@@ -104,14 +120,11 @@ function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
   }
 
   function handleBackToDashboard() {
-    // TODO: adjust if this chat route isn't nested one level under
-    // the tenant dashboard route — ".." walks up to the parent route.
     navigate("/dashboard/overview");
   }
 
   function handleLogOut() {
-    // TODO: clear the auth store / session here before redirecting,
-    // e.g. useAuthStore.getState().clearAuth();
+    clearAuth();
     navigate("/login");
   }
 
@@ -143,7 +156,7 @@ function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
               <img src={groundly_logo} alt="Groundly" className="h-10 w-10 shrink-0" />
               <span className="text-[15px] font-semibold text-neutral-900">Groundly</span>
             </div>
-            {/* In-panel collapse icon — mobile only, per rule 1 */}
+            {/* In-panel collapse icon — mobile only */}
             <button
               type="button"
               onClick={onClose}
@@ -226,21 +239,23 @@ function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
         <div className="flex-shrink-0 border-t border-neutral-200 px-3 py-3">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-medium text-white">
-              {getInitials(mockUser.name)}
+              {getInitials(displayName)}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-neutral-900">{mockUser.name}</p>
-              <p className="truncate text-xs text-neutral-500">{mockUser.email}</p>
+              <p className="truncate text-sm font-medium text-neutral-900">{displayName}</p>
+              <p className="truncate text-xs text-neutral-500">{displayEmail}</p>
             </div>
-            <button
-              type="button"
-              onClick={handleBackToDashboard}
-              aria-label="Back to dashboard"
-              title="Back to dashboard"
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
-            >
-              <Home size={15} />
-            </button>
+            {user?.role !== "employee" && (
+              <button
+                type="button"
+                onClick={handleBackToDashboard}
+                aria-label="Back to dashboard"
+                title="Back to dashboard"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+              >
+                <Home size={15} />
+              </button>
+            )}
             <button
               type="button"
               onClick={handleLogOut}
@@ -256,13 +271,14 @@ function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
     </>
   );
 }
+
 /** Hover-revealed action row under an assistant response: copy + feedback */
 function MessageActions({
   turn,
   onFeedback,
 }: {
   turn: ConversationTurn;
-  onFeedback: (feedback: FeedbackValue) => void;
+  onFeedback: (turn: ConversationTurn, thumb: "up" | "down") => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -288,7 +304,7 @@ function MessageActions({
       </button>
       <button
         type="button"
-        onClick={() => onFeedback(turn.feedback === "up" ? null : "up")}
+        onClick={() => turn.feedback !== "up" && onFeedback(turn, "up")}
         aria-label="Good response"
         className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
           turn.feedback === "up" ? "text-neutral-900" : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
@@ -298,7 +314,7 @@ function MessageActions({
       </button>
       <button
         type="button"
-        onClick={() => onFeedback(turn.feedback === "down" ? null : "down")}
+        onClick={() => turn.feedback !== "down" && onFeedback(turn, "down")}
         aria-label="Bad response"
         className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
           turn.feedback === "down" ? "text-neutral-900" : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
@@ -311,15 +327,91 @@ function MessageActions({
 }
 
 /** Renders one Q&A pair — user bubble, then plain assistant text with citations + actions */
+/**
+ * Splits ai_response text on [p.N]-style markers and turns each one
+ * that matches a real citation into a clickable inline button — same
+ * click behavior as the "Sources" chips below the message. Markers
+ * that don't match any citation in this turn render as plain text
+ * rather than a dead button.
+ */
+function renderAnswerWithCitations(
+  text: string,
+  citations: Citation[],
+  citationNumbers: Map<string, number>,
+  onCitationClick: (citation: Citation) => void
+) {
+  const markerRegex = /\[p\.\d+\]/g;
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = markerRegex.exec(text)) !== null) {
+    const markerText = match[0]; // e.g. "[p.9]"
+    const markerKey = markerText.slice(1, -1); // "p.9"
+
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    const citation = citations.find((c) => c.marker === markerKey);
+    const number = citation ? citationNumbers.get(citation.id) : undefined;
+
+    if (citation && number) {
+      parts.push(
+        <button
+          key={`citation-marker-${key++}`}
+          type="button"
+          onClick={() => onCitationClick(citation)}
+          aria-label={`Source ${number}: ${citation.documentName}, page ${citation.page}`}
+          className="mx-0.5 inline-flex h-[17px] min-w-[17px] -translate-y-[2px] items-center justify-center rounded-full bg-neutral-100 px-[5px] align-middle text-[10px] font-semibold leading-none text-neutral-500 transition-colors hover:bg-neutral-900 hover:text-white"
+        >
+          {number}
+        </button>
+      );
+    } else {
+      // No matching citation for this marker — drop it rather than
+      // showing raw "[p.N]" bracket text, which reads as unfinished.
+    }
+
+    lastIndex = markerRegex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
+}
+
 function ConversationTurnView({
   turn,
   onFeedback,
 }: {
   turn: ConversationTurn;
-  onFeedback: (conversationId: string, feedback: FeedbackValue) => void;
+  onFeedback: (turn: ConversationTurn, thumb: "up" | "down") => void;
 }) {
   const openCitation = useChatUiStore((s) => s.openCitation);
   const activeCitation = useChatUiStore((s) => s.activeCitation);
+  const documentViewMutation = useDocumentViewMutation();
+
+  // Stable numbering shared between the inline superscript badges and
+  // the source list below, so "3" inline and "3" in the list are
+  // visibly the same reference.
+  const citationNumbers = new Map(turn.citations.map((c, i) => [c.id, i + 1]));
+
+  function handleCitationClick(citation: Citation) {
+    documentViewMutation.mutate(citation.documentId, {
+      onSuccess: (doc) => {
+        openCitation({ ...citation, filePath: doc.url, documentName: doc.filename });
+      },
+      onError: () => {
+        // Falls back to the placeholder path rather than blocking the
+        // drawer from opening at all.
+        openCitation(citation);
+      },
+    });
+  }
 
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6">
@@ -332,27 +424,37 @@ function ConversationTurnView({
 
       {/* Assistant response */}
       <div className="group/turn py-3">
-        <p className="whitespace-pre-wrap text-[15px] leading-7 text-neutral-800">{turn.ai_response}</p>
+        <p className="whitespace-pre-wrap text-[15px] leading-7 text-neutral-800">
+          {renderAnswerWithCitations(turn.ai_response, turn.citations, citationNumbers, handleCitationClick)}
+        </p>
 
         {turn.citations.length > 0 && (
-          <div className="mt-3">
+          <div className="mt-3.5">
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
               Sources
             </p>
             <div className="flex flex-wrap gap-1.5">
               {turn.citations.map((citation) => {
                 const isOpen = activeCitation?.id === citation.id;
+                const number = citationNumbers.get(citation.id);
                 return (
                   <button
                     key={citation.id}
                     type="button"
-                    onClick={() => openCitation(citation)}
+                    onClick={() => handleCitationClick(citation)}
                     className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                       isOpen
                         ? "border-neutral-900 bg-neutral-900 text-white"
                         : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400 hover:text-neutral-900"
                     }`}
                   >
+                    <span
+                      className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+                        isOpen ? "bg-white/15 text-white" : "bg-neutral-100 text-neutral-500"
+                      }`}
+                    >
+                      {number}
+                    </span>
                     <FileText size={11} className="flex-shrink-0" />
                     <span className="max-w-[140px] truncate">{citation.documentName}</span>
                     <span className={isOpen ? "text-neutral-300" : "text-neutral-400"}>p.{citation.page}</span>
@@ -363,7 +465,7 @@ function ConversationTurnView({
           </div>
         )}
 
-        <MessageActions turn={turn} onFeedback={(feedback) => onFeedback(turn.id, feedback)} />
+        <MessageActions turn={turn} onFeedback={onFeedback} />
       </div>
     </div>
   );
@@ -399,15 +501,45 @@ function EmptyStateGreeting() {
   );
 }
 
+/**
+ * Shown instead of the composer when the person isn't in any
+ * department yet — chatting is gated on department membership since
+ * that's what scopes which documents they can query.
+ */
+function NoDepartmentNotice() {
+  return (
+    <div className="flex h-full min-h-[60vh] flex-col items-center justify-center px-4 text-center sm:px-6">
+      <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50">
+        <Building2 size={18} className="text-neutral-400" />
+      </div>
+      <h2 className="mt-4 text-lg font-semibold text-neutral-900">
+        You're not in a department yet
+      </h2>
+      <p className="mx-auto mt-1.5 max-w-sm text-sm text-neutral-500">
+        Chatting is scoped to your department's documents, so you'll need to be added to one
+        first. Once a workspace admin adds you, you can start asking questions here — no
+        further action needed on your part.
+      </p>
+    </div>
+  );
+}
+
 /** Top bar: mobile menu toggle + session title + department scope */
 function ConversationHeader({
   title,
+  departments,
   onOpenSidebar,
 }: {
   title: string | null;
+  departments: { id: string; name: string }[] | undefined;
   onOpenSidebar: () => void;
 }) {
-  const departmentQuery = useDepartmentQuery();
+  const departmentLabel =
+    !departments || departments.length === 0
+      ? null
+      : departments.length === 1
+        ? departments[0].name
+        : `${departments[0].name} +${departments.length - 1} more`;
 
   return (
     <div className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-neutral-200 bg-white px-3 sm:px-6">
@@ -424,10 +556,13 @@ function ConversationHeader({
         {title ?? "New chat"}
       </h1>
 
-      {departmentQuery.data && (
-        <span className="flex flex-shrink-0 items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-medium text-neutral-600">
+      {departmentLabel && (
+        <span
+          className="flex flex-shrink-0 items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-medium text-neutral-600"
+          title={departments?.map((d) => d.name).join(", ")}
+        >
           <Building2 size={12} className="text-neutral-400" />
-          <span className="hidden sm:inline">{departmentQuery.data.name}</span>
+          <span className="hidden sm:inline">{departmentLabel}</span>
         </span>
       )}
     </div>
@@ -439,6 +574,7 @@ interface ComposerProps {
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
   isPending: boolean;
+  disabled?: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
 }
 
@@ -446,7 +582,7 @@ interface ComposerProps {
  * Always docked to the bottom of the conversation panel — never
  * centered, regardless of whether there's an active conversation.
  */
-function Composer({ draft, onDraftChange, onSubmit, isPending, textareaRef }: ComposerProps) {
+function Composer({ draft, onDraftChange, onSubmit, isPending, disabled, textareaRef }: ComposerProps) {
   function autoGrowTextarea() {
     const el = textareaRef.current;
     if (!el) return;
@@ -464,23 +600,30 @@ function Composer({ draft, onDraftChange, onSubmit, isPending, textareaRef }: Co
   return (
     <div className="flex-shrink-0 border-t border-neutral-200 bg-white p-3 sm:p-4">
       <div className="mx-auto max-w-3xl">
-        <div className="flex items-end gap-2 rounded-[28px] border border-neutral-200 bg-white px-4 py-3 shadow-[0_2px_10px_rgba(0,0,0,0.04)] transition-colors focus-within:border-neutral-300 focus-within:shadow-[0_2px_16px_rgba(0,0,0,0.07)]">
+        <div
+          className={`flex items-end gap-2 rounded-[28px] border px-4 py-3 shadow-[0_2px_10px_rgba(0,0,0,0.04)] transition-colors ${
+            disabled
+              ? "border-neutral-200 bg-neutral-50"
+              : "border-neutral-200 bg-white focus-within:border-neutral-300 focus-within:shadow-[0_2px_16px_rgba(0,0,0,0.07)]"
+          }`}
+        >
           <textarea
             ref={textareaRef}
             value={draft}
+            disabled={disabled}
             onChange={(e) => {
               onDraftChange(e.target.value);
               autoGrowTextarea();
             }}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder="Ask a question about your documents..."
-            className="max-h-[200px] flex-1 resize-none py-1 text-[15px] leading-relaxed outline-none placeholder:text-neutral-400"
+            placeholder={disabled ? "Waiting for department access…" : "Ask a question about your documents..."}
+            className="max-h-[200px] flex-1 resize-none py-1 text-[15px] leading-relaxed outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed"
           />
           <button
             type="button"
             onClick={onSubmit}
-            disabled={!draft.trim() || isPending}
+            disabled={disabled || !draft.trim() || isPending}
             aria-label="Send message"
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition-colors hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-400"
           >
@@ -503,6 +646,10 @@ function Composer({ draft, onDraftChange, onSubmit, isPending, textareaRef }: Co
 function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const activeSessionId = useChatUiStore((s) => s.activeSessionId);
   const setActiveSessionId = useChatUiStore((s) => s.setActiveSessionId);
+
+  const departmentsQuery = useDepartmentsQuery();
+  const hasDepartment = (departmentsQuery.data?.length ?? 0) > 0;
+
   const sessionQuery = useSessionQuery(activeSessionId);
   const sendMessageMutation = useSendMessageMutation(activeSessionId);
   const feedbackMutation = useFeedbackMutation(activeSessionId);
@@ -511,15 +658,31 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const [draft, setDraft] = useState("");
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const hasAutoCreated = useRef(false);
 
   const conversations = sessionQuery.data?.conversations ?? [];
+
+  // Auto-create a fresh session the moment the person lands on the
+  // chat page — but only once they're confirmed to be in a
+  // department, so a person waiting on department access doesn't
+  // accumulate empty sessions every time they reload this page.
+  useEffect(() => {
+    if (hasAutoCreated.current) return;
+    if (!hasDepartment) return;
+    if (activeSessionId) return;
+
+    hasAutoCreated.current = true;
+    createSessionMutation.mutate(undefined, {
+      onSuccess: (session) => setActiveSessionId(session.id),
+    });
+  }, [hasDepartment, activeSessionId, createSessionMutation, setActiveSessionId]);
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversations.length, sendMessageMutation.isPending]);
 
   async function submitQuery(query: string) {
-    if (!query.trim() || sendMessageMutation.isPending) return;
+    if (!query.trim() || sendMessageMutation.isPending || !hasDepartment) return;
 
     setDraft("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
@@ -534,19 +697,34 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
     sendMessageMutation.mutate(query);
   }
 
-  function handleFeedback(conversationId: string, feedback: FeedbackValue) {
-    feedbackMutation.mutate({ conversationId, feedback });
+  function handleFeedback(turn: ConversationTurn, thumb: "up" | "down") {
+    feedbackMutation.mutate({ turn, thumb });
   }
 
-  const showEmptyState = !activeSessionId && conversations.length === 0;
+  const isSettingUpSession = hasDepartment && !activeSessionId;
+  const showEmptyState = hasDepartment && Boolean(activeSessionId) && conversations.length === 0;
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-white">
-      <ConversationHeader title={sessionQuery.data?.title ?? null} onOpenSidebar={onOpenSidebar} />
+      <ConversationHeader
+        title={sessionQuery.data?.title ?? null}
+        departments={departmentsQuery.data}
+        onOpenSidebar={onOpenSidebar}
+      />
 
       {/* This is the only scrollable region in the whole panel */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {showEmptyState ? (
+        {departmentsQuery.isLoading ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 size={18} className="animate-spin text-neutral-300" />
+          </div>
+        ) : !hasDepartment ? (
+          <NoDepartmentNotice />
+        ) : isSettingUpSession ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 size={18} className="animate-spin text-neutral-300" />
+          </div>
+        ) : showEmptyState ? (
           <EmptyStateGreeting />
         ) : sessionQuery.isLoading ? (
           <div className="mx-auto max-w-3xl space-y-6 px-4 py-8 sm:px-6">
@@ -567,6 +745,13 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
             ))}
 
             {sendMessageMutation.isPending && <TypingIndicator />}
+            {sendMessageMutation.isError && (
+              <div className="mx-auto max-w-3xl px-4 sm:px-6">
+                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {sendMessageMutation.error?.message ?? "Couldn't send that message."}
+                </p>
+              </div>
+            )}
 
             <div ref={scrollAnchorRef} />
           </div>
@@ -579,6 +764,7 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         onDraftChange={setDraft}
         onSubmit={() => submitQuery(draft)}
         isPending={sendMessageMutation.isPending || createSessionMutation.isPending}
+        disabled={!hasDepartment || departmentsQuery.isLoading}
         textareaRef={textareaRef}
       />
     </div>
@@ -586,9 +772,146 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 }
 
 /**
+ * ⚠️ Unconfirmed: PDF bbox coordinates can use either a top-left
+ * origin (y grows downward — common output from pdfplumber/PyMuPDF
+ * text-extraction in "top-left" mode) or the native PDF coordinate
+ * space (bottom-left origin, y grows upward). Getting this wrong
+ * flips the highlight vertically. Defaulting to "top-left"; open a
+ * citation with a real bbox and flip this if the highlight lands on
+ * the mirrored position on the page.
+ */
+const BBOX_ORIGIN: "top-left" | "bottom-left" = "top-left";
+
+function PdfLoadingState() {
+  return (
+    <div className="flex h-64 items-center justify-center">
+      <Loader2 size={18} className="animate-spin text-neutral-300" />
+    </div>
+  );
+}
+
+function PdfErrorState() {
+  return (
+    <div className="flex h-64 flex-col items-center justify-center gap-2 px-4 text-center">
+      <FileText size={20} className="text-neutral-300" />
+      <p className="text-sm text-neutral-500">Couldn't load this document.</p>
+    </div>
+  );
+}
+
+interface PdfPageViewProps {
+  fileUrl: string;
+  initialPage: number;
+  bbox: number[] | null;
+}
+
+/**
+ * Renders a single PDF page onto a canvas (via react-pdf/pdfjs) with
+ * a highlight box drawn over the cited bbox, plus prev/next controls
+ * so the person can scroll through nearby pages for context — the
+ * highlight only shows on the page it actually belongs to.
+ */
+function PdfPageView({ fileUrl, initialPage, bbox }: PdfPageViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(360);
+  const [pageNumber, setPageNumber] = useState(initialPage);
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [nativeSize, setNativeSize] = useState<{ width: number; height: number } | null>(null);
+  const [renderedSize, setRenderedSize] = useState<{ width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    function updateWidth() {
+      if (containerRef.current) setContainerWidth(containerRef.current.clientWidth);
+    }
+    updateWidth();
+    window.addEventListener("resize", updateWidth);
+    return () => window.removeEventListener("resize", updateWidth);
+  }, []);
+
+  const highlight =
+    bbox && nativeSize && renderedSize && pageNumber === initialPage
+      ? (() => {
+          const scaleX = renderedSize.width / nativeSize.width;
+          const scaleY = renderedSize.height / nativeSize.height;
+          const [x0, y0, x1, y1] = bbox;
+          const top = BBOX_ORIGIN === "top-left" ? y0 * scaleY : (nativeSize.height - y1) * scaleY;
+          return {
+            top,
+            left: x0 * scaleX,
+            width: (x1 - x0) * scaleX,
+            height: (y1 - y0) * scaleY,
+          };
+        })()
+      : null;
+
+  return (
+    <div className="flex h-full flex-col">
+      <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto bg-neutral-100 p-3">
+        <div className="relative mx-auto w-full max-w-full">
+          <Document
+            file={fileUrl}
+            loading={<PdfLoadingState />}
+            error={<PdfErrorState />}
+            onLoadSuccess={({ numPages: total }) => setNumPages(total)}
+          >
+            <Page
+              pageNumber={pageNumber}
+              width={containerWidth}
+              loading={<PdfLoadingState />}
+              onLoadSuccess={(page) => {
+                setNativeSize({ width: page.originalWidth, height: page.originalHeight });
+                setRenderedSize({ width: page.width, height: page.height });
+              }}
+            />
+          </Document>
+
+          {highlight && (
+            <div
+              className="pointer-events-none absolute rounded-sm border-2 border-amber-400 bg-amber-300/30"
+              style={{
+                top: highlight.top,
+                left: highlight.left,
+                width: highlight.width,
+                height: highlight.height,
+              }}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Page navigation — always visible so the person can browse
+          around the cited page for surrounding context */}
+      <div className="flex flex-shrink-0 items-center justify-between border-t border-neutral-200 bg-white px-4 py-2.5">
+        <button
+          type="button"
+          onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
+          disabled={pageNumber <= 1}
+          className="rounded-md px-2 py-1 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Previous
+        </button>
+        <span className="text-xs text-neutral-500">
+          Page {pageNumber}
+          {numPages ? ` of ${numPages}` : ""}
+          {pageNumber === initialPage && " · cited"}
+        </span>
+        <button
+          type="button"
+          onClick={() => setPageNumber((p) => (numPages ? Math.min(numPages, p + 1) : p + 1))}
+          disabled={numPages !== null && pageNumber >= numPages}
+          className="rounded-md px-2 py-1 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Right panel: full-screen overlay on small/medium screens, static
  * full-height side panel on large screens. Explicitly h-full at
- * every level so the PDF iframe always fills the available height
+ * every level so the PDF viewer always fills the available height
  * regardless of document length.
  */
 function CitationDrawer() {
@@ -643,20 +966,25 @@ function CitationDrawer() {
           </div>
         </div>
 
-        <div className="flex-shrink-0 border-b border-neutral-100 bg-neutral-50/60 px-4 py-3.5">
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
-            Cited passage
-          </p>
-          <p className="text-sm italic leading-relaxed text-neutral-700">&ldquo;{activeCitation.snippet}&rdquo;</p>
-        </div>
+        {/* Hidden when there's no excerpt — the backend doesn't return
+            one for every citation, and an empty quoted block looks broken. */}
+        {activeCitation.snippet && (
+          <div className="flex-shrink-0 border-b border-neutral-100 bg-neutral-50/60 px-4 py-3.5">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+              Cited passage
+            </p>
+            <p className="text-sm italic leading-relaxed text-neutral-700">&ldquo;{activeCitation.snippet}&rdquo;</p>
+          </div>
+        )}
 
-        {/* PDF viewer fills all remaining height, full height by default */}
-        <div className="min-h-0 flex-1 bg-neutral-100">
-          <iframe
+        {/* Real PDF rendering (react-pdf/pdfjs) — jumps straight to the
+            cited page and draws the bbox highlight on top */}
+        <div className="min-h-0 flex-1">
+          <PdfPageView
             key={activeCitation.id}
-            src={`${activeCitation.filePath}#page=${activeCitation.page}`}
-            title={activeCitation.documentName}
-            className="h-full w-full border-0"
+            fileUrl={activeCitation.filePath}
+            initialPage={activeCitation.page}
+            bbox={activeCitation.bbox}
           />
         </div>
       </div>

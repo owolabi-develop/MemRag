@@ -19,7 +19,7 @@ async def create_user(user: UserCreate, session:sessionCreator, background_tasks
     
     existing_user = await session.exec(select(User).where(User.email == user.email))
     if existing_user.first():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already registered")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This email is already registered.")
     user_obj = User.model_validate(user,update={"hashed_password": get_password_hash(user.password)})
     
     session.add(user_obj)
@@ -45,7 +45,7 @@ async def add_user(user: UserInvite, session: sessionCreator,current_user: Annot
 
     existing_user = await session.exec(select(User).where(User.email == user.email))
     if existing_user.first():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already registered")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already invited")
 
     existing_tnt_org = await session.get(Tenant, tenant_id)
     if existing_tnt_org is None:

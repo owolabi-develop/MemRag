@@ -1,12 +1,66 @@
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
+import type { ActionFunctionArgs } from "react-router";
 import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import groundly_logo from "../../assets/images/Groundly-logo.png";
+import { apiFormRequest, ApiError } from "../../shared/api/httpClient";
+import { useAuthStore } from "../../shared/store/authStore";
+import type { TokenResponse } from "../../shared/types/type";
+
+interface ActionData {
+  error?: string;
+}
+
+export async function login_action({ request }: ActionFunctionArgs) {
+  const formData = await request.formData();
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+
+  if (!email || !password) {
+    return { error: "Enter your email and password" } satisfies ActionData;
+  }
+
+  const body = new URLSearchParams();
+  body.set("username", email);
+  body.set("password", password);
+
+  let data: TokenResponse;
+  try {
+    data = await apiFormRequest<TokenResponse>("/token", body);
+  } catch (err) {
+  
+    const message =
+      err instanceof ApiError
+        ? err.message
+        : "Couldn't reach the server. Check your connection and try again.";
+    return { error: message } satisfies ActionData;
+  }
+  useAuthStore.getState().setAuth(data.access_token, {
+  email,
+  is_active: true,
+  is_superuser: false,
+  role: data.role,
+  invited: data.invited,
+  status: data.status,
+  first_name:data.first_name,
+  last_name: data.last_name,
+  must_change_password: data.must_change_password,
+});
+
+const redirectTo = data.must_change_password
+  ? "/set-initial-password"
+  : data.invited
+    ? "/user-dashboard"
+    : "/dashboard/overview";
+
+return redirect(redirectTo);
+}
 
 export default function Login() {
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
   const [showPassword, setShowPassword] = useState(false);
+  const actionData = useActionData() as ActionData | undefined;
 
   return (
     <div className="flex min-h-screen items-center justify-center">
@@ -27,6 +81,12 @@ export default function Login() {
 
         <div className="mt-5 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm sm:p-6">
           <Form method="post" replace className="space-y-3.5">
+            {actionData?.error && (
+              <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                {actionData.error}
+              </div>
+            )}
+
             {/* Email */}
             <div>
               <label

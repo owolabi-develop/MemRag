@@ -44,6 +44,7 @@ def resolve_citations(answer_text: str, documents: list[dict]) -> dict:
                 "section_title": meta.get("section_title"),
                 "bbox": meta.get("bbox"),
                 "chunk_id": meta.get("chunk_id"),
+                "document_id": meta.get("document_id")
             })
 
     return {

@@ -8,14 +8,11 @@ import {
   AlertCircle,
   CheckCircle2,
   CalendarDays,
+  Loader2,
 } from "lucide-react";
-
-// Replace with real tenant data from your loader
-const TENANT = {
-  name: "Acme Logistics",
-  description: "Core workspace for Acme's operations and finance teams.",
-  createdAt: "2026-03-14",
-};
+import { useTenantQuery } from "../../shared/hooks/useTenant";
+import { useUpdatePasswordMutation } from "../../shared/hooks/useUpdatePassword";
+import { ApiError } from "../../shared/api/httpClient"; // adjust to match your actual path
 
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString("en-US", {
@@ -29,9 +26,15 @@ interface PasswordErrors {
   currentPassword?: string;
   newPassword?: string;
   confirmPassword?: string;
+  form?: string;
 }
 
 export default function Settings() {
+  const { data: tenant, isLoading: isTenantLoading, isError: isTenantError } =
+    useTenantQuery();
+
+  const updatePasswordMutation = useUpdatePasswordMutation();
+
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -67,15 +70,31 @@ export default function Settings() {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSuccess(false);
+    setErrors((prev) => ({ ...prev, form: undefined }));
 
     if (!validate()) return;
 
-    // Hand off to your route action / mutation here.
-    // On success, reset the form and surface confirmation:
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setSuccess(true);
+    updatePasswordMutation.mutate(
+      {
+        current_password: currentPassword,
+        new_password: newPassword,
+      },
+      {
+        onSuccess: () => {
+          setCurrentPassword("");
+          setNewPassword("");
+          setConfirmPassword("");
+          setSuccess(true);
+        },
+        onError: (err) => {
+          const message =
+            err instanceof ApiError
+              ? err.message
+              : "Failed to update password. Please try again.";
+          setErrors((prev) => ({ ...prev, form: message }));
+        },
+      }
+    );
   }
 
   return (
@@ -96,29 +115,45 @@ export default function Settings() {
             <h2 className="font-semibold">Workspace Details</h2>
           </div>
 
-          <div className="mt-6 space-y-5">
-            <div>
-              <p className="text-sm font-medium text-neutral-500">Tenant Name</p>
-              <p className="mt-1 text-base font-medium">{TENANT.name}</p>
+          {isTenantLoading && (
+            <div className="mt-6 flex items-center gap-2 text-sm text-neutral-500">
+              <Loader2 size={15} className="animate-spin" />
+              Loading workspace details…
             </div>
+          )}
 
-            <div>
-              <p className="text-sm font-medium text-neutral-500">Description</p>
-              <p className="mt-1 text-sm leading-relaxed text-neutral-700">
-                {TENANT.description}
-              </p>
+          {isTenantError && (
+            <div className="mt-6 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <AlertCircle size={16} />
+              Couldn't load workspace details.
             </div>
+          )}
 
-            <div className="flex items-center gap-2 border-t border-neutral-100 pt-5">
-              <CalendarDays size={15} className="text-neutral-400" />
-              <p className="text-sm text-neutral-500">
-                Created on{" "}
-                <span className="font-medium text-neutral-700">
-                  {formatDate(TENANT.createdAt)}
-                </span>
-              </p>
+          {tenant && (
+            <div className="mt-6 space-y-5">
+              <div>
+                <p className="text-sm font-medium text-neutral-500">Tenant Name</p>
+                <p className="mt-1 text-base font-medium">{tenant.name}</p>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-neutral-500">Description</p>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-700">
+                  {tenant.description || "No description"}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 border-t border-neutral-100 pt-5">
+                <CalendarDays size={15} className="text-neutral-400" />
+                <p className="text-sm text-neutral-500">
+                  Created on{" "}
+                  <span className="font-medium text-neutral-700">
+                    {formatDate(tenant.created_at)}
+                  </span>
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Update password */}
@@ -132,6 +167,13 @@ export default function Settings() {
             <div className="mt-6 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
               <CheckCircle2 size={16} />
               Password updated successfully.
+            </div>
+          )}
+
+          {errors.form && (
+            <div className="mt-6 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <AlertCircle size={16} />
+              {errors.form}
             </div>
           )}
 
@@ -249,10 +291,15 @@ export default function Settings() {
 
             <button
               type="submit"
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-neutral-900 text-white transition-opacity hover:opacity-90"
+              disabled={updatePasswordMutation.isPending}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-neutral-900 text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Lock size={16} />
-              Update Password
+              {updatePasswordMutation.isPending ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Lock size={16} />
+              )}
+              {updatePasswordMutation.isPending ? "Updating…" : "Update Password"}
             </button>
           </Form>
         </div>

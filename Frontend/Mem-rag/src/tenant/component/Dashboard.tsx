@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useNavigate, Navigate, useLocation } from "react-router";
 import {
   Plug,
   UserPlus,
@@ -6,9 +6,13 @@ import {
   Upload,
   Settings,
   LayoutGrid,
-  MessageSquare
+  MessageSquare,
+  LogOut,
 } from "lucide-react";
 import groundly_logo from "../../assets/images/Groundly-logo.png";
+
+import { useAuthStore } from "../../shared/store/authStore";
+import { useSTenantIDStore } from "../../shared/store/TenantStore";
 
 const NAV_ITEMS = [
   {
@@ -32,7 +36,7 @@ const NAV_ITEMS = [
     label: "chat",
     icon: MessageSquare,
   },
-  
+
   {
     to: "/dashboard/documents",
     label: "Upload document",
@@ -51,6 +55,26 @@ const NAV_ITEMS = [
 ];
 
 export default function TenantDashboard() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const clearAuth = useAuthStore((s) => s.clearAuth);
+  const user = useAuthStore((s) => s.user);
+  const token = useAuthStore((s) => s.accessToken);
+  const clearID = useSTenantIDStore((s) => s.clearID)
+
+  // No token → bounce to login, and remember where they were headed
+  if (!token) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  function handleLogout() {
+    clearAuth();
+     clearID()
+    navigate("/login", { replace: true });
+  }
+
+  const initials = user?.email ? user.email.slice(0, 2).toUpperCase() : "??";
+
   return (
     <div className="flex size-full">
       {/* Sidebar */}
@@ -92,20 +116,33 @@ export default function TenantDashboard() {
         </nav>
 
         {/* User */}
-        <div className="flex items-center justify-center border-t border-neutral-200 px-2 py-3.5 md:justify-start md:gap-2.5 md:px-4">
+        <div className="flex items-center justify-center gap-2 border-t border-neutral-200 px-2 py-3.5 md:justify-start md:px-4">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-medium text-white">
-            JD
+            {initials}
           </div>
 
-          <div className="hidden min-w-0 md:block">
+          <div className="hidden min-w-0 flex-1 md:block">
             <p className="truncate text-sm font-medium text-neutral-900">
-              John Doe
+              {user?.first_name || user?.last_name
+                ? `${user.first_name} ${user.last_name}`.trim()
+                : (user?.email ?? "Account")}
             </p>
 
             <p className="truncate text-xs text-neutral-500">
-              Acme Inc.
+              {user?.email ?? ""}
             </p>
           </div>
+
+          {/* Logout — sits next to the name, not in the nav list above */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            title="Log out"
+            aria-label="Log out"
+            className="hidden shrink-0 items-center justify-center rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900 md:flex"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </aside>
 
@@ -117,7 +154,7 @@ export default function TenantDashboard() {
           </h1>
         </header>
 
-        <main className="flex-1px-4 py-6 md:px-8 md:py-8">
+        <main className="flex-1 px-4 py-6 md:px-8 md:py-8">
           <Outlet />
         </main>
       </div>

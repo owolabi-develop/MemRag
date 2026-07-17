@@ -1,66 +1,107 @@
-import { Link } from "react-router";
+// component/overview.tsx
+
+import { Link, Navigate } from "react-router";
+import { ArrowUpRight, ArrowRight, Loader2, AlertCircle } from "lucide-react";
+import { useAuthStore } from "../../shared/store/authStore";
 import {
-  Upload,
-  Building2,
-  Mail,
-  Plug,
-  ArrowUpRight,
-  ArrowRight,
-} from "lucide-react";
+  useInvitedUsersCountQuery,
+  useDepartmentsListQuery,
+  useTenantDocumentCountQuery,
+  useDepartmentDocumentCounts,
+} from "../../shared/hooks/useOverviewData";
 
-// Replace with real data from your loader
-const STATS = [
-  { label: "Users", value: "24", delta: "+3", note: "8 pending invites" },
-  { label: "Departments", value: "6", delta: "+1", note: "this month" },
-  { label: "Documents", value: "312", delta: "+18", note: "this week" },
-  { label: "Connectors", value: "3", delta: null, note: "all synced" },
-];
-
-// Replace with real data from your loader
-const DEPARTMENTS = [
-  { name: "Engineering", docs: 128, share: 41 },
-  { name: "Sales", docs: 74, share: 24 },
-  { name: "People", docs: 52, share: 17 },
-  { name: "Finance", docs: 34, share: 11 },
-  { name: "Legal", docs: 24, share: 7 },
-];
-
-// Replace with real data from your loader
 const CONNECTORS = [
   { name: "Google Drive", status: "Synced", lastSync: "12 min ago" },
   { name: "Amazon S3", status: "Synced", lastSync: "1 hr ago" },
   { name: "OneDrive", status: "Syncing", lastSync: "In progress" },
-];
-
-// Replace with real data from your loader
-const ACTIVITY = [
-  {
-    icon: Upload,
-    label: "Sarah Kim uploaded",
-    detail: "security-policy.pdf",
-    time: "2h ago",
-  },
-  {
-    icon: Building2,
-    label: "Department created",
-    detail: "Engineering",
-    time: "5h ago",
-  },
-  {
-    icon: Mail,
-    label: "Invite sent",
-    detail: "mike@company.com",
-    time: "1d ago",
-  },
-  {
-    icon: Plug,
-    label: "Connector added",
-    detail: "Google Drive",
-    time: "2d ago",
-  },
+  { name: "DropBox", status: "Syncing", lastSync: "In progress" },
 ];
 
 export default function Overview() {
+  const token = useAuthStore((s) => s.accessToken);
+
+  const {
+    data: invitedUsers,
+    isLoading: isUsersLoading,
+  } = useInvitedUsersCountQuery();
+
+  const {
+    data: departments,
+    isLoading: isDepartmentsLoading,
+    isError: isDepartmentsError,
+  } = useDepartmentsListQuery();
+
+  const {
+    data: tenantDocCount,
+    isLoading: isTenantDocCountLoading,
+  } = useTenantDocumentCountQuery();
+
+  const departmentDocQueries = useDepartmentDocumentCounts(departments ?? []);
+
+  // No token → bounce to login. Checked after the hooks above so hook
+  // order stays stable across renders (React's rules of hooks).
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const isLoadingCore =
+    isUsersLoading || isDepartmentsLoading || isTenantDocCountLoading;
+
+  const totalDocuments = tenantDocCount?.total_documents ?? 0;
+
+  // Pair each department with its resolved doc count once its query
+  // settles; falls back to 0 while that specific request is still pending.
+  const departmentCoverage = (departments ?? []).map((d, i) => {
+    const docs = departmentDocQueries[i]?.data?.total_documents ?? 0;
+    const share = totalDocuments > 0 ? Math.round((docs / totalDocuments) * 100) : 0;
+    return { name: d.name, docs, share };
+  });
+
+  const STATS = [
+    {
+      label: "Users",
+      value: String(invitedUsers?.length ?? 0),
+      delta: null,
+      note: `${invitedUsers?.filter((u) => u.status === "pending").length ?? 0} pending invites`,
+    },
+    {
+      label: "Departments",
+      value: String(departments?.length ?? 0),
+      delta: null,
+      note: "in this workspace",
+    },
+    {
+      label: "Documents",
+      value: String(totalDocuments),
+      delta: null,
+      note: "across all departments",
+    },
+    {
+      label: "Connectors",
+      value: String(CONNECTORS.length),
+      delta: null,
+      note: "all synced",
+    },
+  ];
+
+  if (isLoadingCore) {
+    return (
+      <div className="flex items-center gap-2 p-10 text-sm text-neutral-500">
+        <Loader2 size={16} className="animate-spin" />
+        Loading overview…
+      </div>
+    );
+  }
+
+  if (isDepartmentsError) {
+    return (
+      <div className="m-5 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <AlertCircle size={16} />
+        Couldn't load overview data.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-10 p-5">
       {/* Stat strip */}
@@ -103,7 +144,11 @@ export default function Overview() {
           </div>
 
           <div className="mt-5 space-y-3.5">
-            {DEPARTMENTS.map((d) => (
+            {departmentCoverage.length === 0 && (
+              <p className="text-sm text-neutral-500">No departments yet.</p>
+            )}
+
+            {departmentCoverage.map((d) => (
               <div key={d.name}>
                 <div className="flex items-baseline justify-between text-sm">
                   <span className="font-medium text-neutral-800">
@@ -158,41 +203,6 @@ export default function Overview() {
             ))}
           </ul>
         </div>
-      </div>
-
-      {/* Activity timeline */}
-      <div className="rounded-xl border border-neutral-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-neutral-900">
-          Recent activity
-        </h2>
-
-        <ul className="mt-4">
-          {ACTIVITY.map((a, i) => {
-            const Icon = a.icon;
-            const isLast = i === ACTIVITY.length - 1;
-            return (
-              <li key={i} className="flex gap-3">
-                <div className="flex flex-col items-center">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white">
-                    <Icon size={13} className="text-neutral-500" />
-                  </div>
-                  {!isLast && (
-                    <div className="w-px flex-1 bg-neutral-100" />
-                  )}
-                </div>
-                <div className={`flex-1 ${isLast ? "pb-0" : "pb-5"}`}>
-                  <p className="text-sm text-neutral-800">
-                    {a.label}{" "}
-                    <span className="font-medium text-neutral-900">
-                      {a.detail}
-                    </span>
-                  </p>
-                  <p className="mt-0.5 text-xs text-neutral-400">{a.time}</p>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
       </div>
     </div>
   );

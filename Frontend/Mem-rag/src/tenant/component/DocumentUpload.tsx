@@ -1,20 +1,31 @@
-import { useRef, useState, type DragEvent, type FormEvent } from "react";
-import { Form } from "react-router";
+// pages/DocumentUpload.tsx
+
+import { useEffect, useRef, useState, type DragEvent } from "react";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  redirect,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from "react-router";
 import {
   UploadCloud,
   FileText,
   FileSpreadsheet,
   X,
   AlertCircle,
+  CheckCircle2,
   FolderKanban,
 } from "lucide-react";
+import { uploadDocument } from "../../shared/api/document.api";
+import { getDepartments } from "../../shared/api/department.api";
+import type { DepartmentOption } from "../../shared/types/department";
+import { ApiError } from "../../shared/api/httpClient"; // adjust to match your actual path
+import { useAuthStore } from "../../shared/store/authStore";
 
-const DEPARTMENTS = [
-  { id: "1", name: "Engineering" },
-  { id: "2", name: "Finance" },
-];
-
-const ACCEPTED_EXTENSIONS = ["pdf", "docx", "csv"];
+const ACCEPTED_EXTENSIONS = ["pdf"];
 const MAX_FILE_SIZE_MB = 10;
 
 function getFileExtension(fileName: string) {
@@ -34,8 +45,64 @@ function FileTypeIcon({ extension }: { extension: string }) {
   return <FileText size={20} className="text-neutral-500" />;
 }
 
+// ---- Loader ----
+
+export async function documentUploadLoader({}: LoaderFunctionArgs) {
+  const token = useAuthStore.getState().accessToken;
+  if (!token) {
+    return redirect("/login");
+  }
+
+  const departments = await getDepartments();
+  return { departments };
+}
+
+// ---- Action ----
+
+interface ActionData {
+  error?: string;
+  success?: boolean;
+}
+
+export async function documentUploadAction({
+  request,
+}: ActionFunctionArgs): Promise<ActionData> {
+  const formData = await request.formData();
+
+  const file = formData.get("file");
+  const departmentId = formData.get("department_id");
+
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Please select a file to upload." };
+  }
+
+  if (!departmentId) {
+    return { error: "Please select a department." };
+  }
+
+  try {
+    // formData already contains exactly "file" and "department_id",
+    // matching the curl example, so it can be sent as-is.
+    await uploadDocument(formData);
+    return { success: true };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { error: err.message };
+    }
+    return { error: "Failed to upload document. Please try again." };
+  }
+}
+
+// ---- Component ----
+
 export default function DocumentUpload() {
+  const { departments } = useLoaderData() as { departments: DepartmentOption[] };
+  const actionData = useActionData() as ActionData | undefined;
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+
   const inputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [departmentId, setDepartmentId] = useState("");
@@ -43,13 +110,26 @@ export default function DocumentUpload() {
   const [fileError, setFileError] = useState<string | null>(null);
   const [departmentError, setDepartmentError] = useState<string | null>(null);
 
+  // Reset the form after a successful upload — the action doesn't redirect,
+  // so nothing clears the inputs automatically.
+  useEffect(() => {
+    if (actionData?.success) {
+      setFile(null);
+      setDepartmentId("");
+      setFileError(null);
+      setDepartmentError(null);
+      if (inputRef.current) inputRef.current.value = "";
+      formRef.current?.reset();
+    }
+  }, [actionData]);
+
   function validateAndSetFile(candidate: File | undefined) {
     if (!candidate) return;
 
     const extension = getFileExtension(candidate.name);
 
     if (!ACCEPTED_EXTENSIONS.includes(extension)) {
-      setFileError("Only PDF, DOCX, or CSV files are supported.");
+      setFileError("Only PDF files are supported.");
       setFile(null);
       return;
     }
@@ -76,7 +156,7 @@ export default function DocumentUpload() {
     if (inputRef.current) inputRef.current.value = "";
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     let hasError = false;
 
     if (!file) {
@@ -101,7 +181,22 @@ export default function DocumentUpload() {
         <h2 className="font-semibold">Upload Document</h2>
       </div>
 
+      {actionData?.success && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <CheckCircle2 size={16} />
+          Document uploaded successfully.
+        </div>
+      )}
+
+      {actionData?.error && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertCircle size={16} />
+          {actionData.error}
+        </div>
+      )}
+
       <Form
+        ref={formRef}
         method="post"
         encType="multipart/form-data"
         onSubmit={handleSubmit}
@@ -125,15 +220,15 @@ export default function DocumentUpload() {
               isDragging
                 ? "border-neutral-900 bg-neutral-50"
                 : fileError
-                ? "border-red-300 bg-red-50/40"
-                : "border-neutral-300 bg-neutral-50/50 hover:border-neutral-400 hover:bg-neutral-50"
+                  ? "border-red-300 bg-red-50/40"
+                  : "border-neutral-300 bg-neutral-50/50 hover:border-neutral-400 hover:bg-neutral-50"
             }`}
           >
             <input
               ref={inputRef}
               type="file"
               name="file"
-              accept=".pdf,.docx,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv"
+              accept=".pdf,application/pdf"
               className="hidden"
               onChange={(e) => validateAndSetFile(e.target.files?.[0])}
             />
@@ -157,7 +252,7 @@ export default function DocumentUpload() {
             </p>
 
             <p className="mt-3 text-xs text-neutral-400">
-              PDF, DOCX, or CSV — up to {MAX_FILE_SIZE_MB}MB
+              PDF — up to {MAX_FILE_SIZE_MB}MB
             </p>
           </div>
 
@@ -220,7 +315,7 @@ export default function DocumentUpload() {
               }`}
             >
               <option value="">Select department</option>
-              {DEPARTMENTS.map((d) => (
+              {departments.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
                 </option>
@@ -238,10 +333,11 @@ export default function DocumentUpload() {
 
         <button
           type="submit"
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-neutral-900 text-white transition-opacity hover:opacity-90"
+          disabled={isSubmitting}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-neutral-900 text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <UploadCloud size={16} />
-          Upload Document
+          {isSubmitting ? "Uploading…" : "Upload Document"}
         </button>
       </Form>
     </div>

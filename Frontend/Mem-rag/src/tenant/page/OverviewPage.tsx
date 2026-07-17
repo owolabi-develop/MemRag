@@ -1,9 +1,9 @@
-import Overview from "../component/overview"
+
+import Overview from "../component/overview";
 
 const OverviewPage = () => {
-  return (
-    <Overview/>
-  )
-}
+ 
+  return <Overview />;
+};
 
-export default OverviewPage
+export default OverviewPage;

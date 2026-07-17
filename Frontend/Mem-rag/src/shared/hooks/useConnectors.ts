@@ -4,6 +4,7 @@ import {
   disconnectConnector,
   getConnectorStatus,
   syncDocuments,
+  connectGoogleDriveWithFile,
   type ConnectorId,
   type ConnectorStatusResponse,
   type SyncPayload,
@@ -53,5 +54,19 @@ export function useDisconnectMutation(connectorId: ConnectorId) {
 export function useSyncDocumentsMutation() {
   return useMutation({
     mutationFn: (payload: SyncPayload) => syncDocuments(payload),
+  });
+}
+
+
+export function useConnectGoogleDriveMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: connectGoogleDriveWithFile,
+    onSuccess: () => {
+      // Matches whatever queryKey useConnectorStatusQuery("google_drive")
+      // actually uses — adjust if it's keyed differently.
+      queryClient.invalidateQueries({ queryKey: ["connectorStatus", "google_drive"] });
+    },
   });
 }

@@ -1,9 +1,55 @@
-import { Form, useNavigation } from "react-router";
+import {
+  Form,
+  useActionData,
+  useNavigation,
+  redirect,
+  Navigate,
+  type ActionFunctionArgs,
+} from "react-router";
 import groundly_logo from "../../assets/images/Groundly-logo.png";
+import { createTenant } from "../../shared/api/tenant.api";
+import { ApiError } from "../../shared/api/httpClient"; // adjust path to match
+import { useAuthStore } from "../../shared/store/authStore";
+
+export async function createTenantAction({ request }: ActionFunctionArgs) {
+  const formData = await request.formData();
+  const name = String(formData.get("tenantName") || "").trim();
+  const description = String(formData.get("tenantDescription") || "").trim();
+
+  if (!name) {
+    return { error: "Organization name is required" };
+  }
+
+  // Actions run outside React's render tree, so pull straight from the store's state
+  const token = useAuthStore.getState().accessToken;
+  if (!token) {
+    return redirect("/register");
+  }
+
+  try {
+    await createTenant(
+      { name, description: description || undefined },
+      token
+    );
+    return redirect("/dashboard/overview");
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { error: err.message };
+    }
+    return { error: "Failed to create workspace. Please try again." };
+  }
+}
 
 export default function CreateTenant() {
   const navigation = useNavigation();
+  const actionData = useActionData() as { error?: string } | undefined;
   const isSubmitting = navigation.state === "submitting";
+  const token = useAuthStore((s) => s.accessToken);
+
+  // No token → bounce to register
+  if (!token) {
+    return <Navigate to="/register" replace />;
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center">
@@ -23,6 +69,12 @@ export default function CreateTenant() {
         </div>
 
         <div className="mt-5 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm sm:p-6">
+          {actionData?.error && (
+            <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+              {actionData.error}
+            </p>
+          )}
+
           <Form method="post" replace className="space-y-3.5">
             {/* Tenant name */}
             <div>

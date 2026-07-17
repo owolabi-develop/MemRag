@@ -1,6 +1,5 @@
 from sqlmodel import text
 from src.embeddings.embedder import hug_embedding
-from src.prompts.compress_prompt import compress_prompt
 from app.db import async_session_pool
 from src.connection.connections import get_db_pool
 from sqlalchemy import bindparam
@@ -11,18 +10,13 @@ from sqlalchemy.dialects.postgresql import UUID,ARRAY
 from sentence_transformers import CrossEncoder
 
 
-encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2',device="cpu")
+
 
       
 def re_rank(query: str, documents: list[dict], top_k: int = 5) -> list[dict]:
-   
+    encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2',device="cpu")
     passages = [doc["content"] for doc in documents]
-
     ranked = encoder.rank(query, passages, top_k=top_k, return_documents=False)
-    # each item: {"corpus_id": int, "score": float}
-
-    # corpus_id maps back to the ORIGINAL documents list -- metadata travels
-    # with it automatically, no manual re-indexing to get wrong
     return [documents[item["corpus_id"]] for item in ranked]
 
 async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], tenant_id: uuid.UUID, k: int=3):
@@ -34,7 +28,6 @@ async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], ten
     SELECT id,content,metadata, RANK () OVER (ORDER BY embedding <=> $2) AS rank
     FROM semantic_memory
         WHERE tenant_id = $4 AND department_id = ANY($3)
-        AND (embedding <=> $2) < 0.30
         ORDER BY embedding <=> $2
         LIMIT 10),
     keyword_search AS (
@@ -72,13 +65,9 @@ async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], ten
     for r in results:
         meta = r['metadata'] if isinstance(r['metadata'], dict) else json.loads(r['metadata'] or '{}')
         raw_content = r["content"]
-        
-        # FIX 1: Only pass the raw text content chunk to LLMLingua
-        # This stops LLMLingua from dropping or mixing up your metadata metrics
-        compressed_content = await compress_prompt(raw_content, query)
-        
+            
         doc_entry = {
-            "content": compressed_content,
+            "content": raw_content,
             "metadata": {
                 "bbox":meta.get('bbox',[]),
                 "source": meta.get('source', 'Unknown'),

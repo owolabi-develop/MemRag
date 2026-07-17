@@ -60,7 +60,7 @@ async def get_tenant_user(session:sessionCreator,current_user: Annotated[User,De
     if current_user.tenant_id is None:
         return []
     existing_tenant_user = await session.get(Tenant,current_user.tenant_id)
-    users = list(filter(lambda x:x.status=="pending" or x.status=="accepted",existing_tenant_user.users))
+    users = list(filter(lambda x:x.status=="pending" or x.status=="accepted" or x.status=="main",existing_tenant_user.users))
     return users
 
 @router.get("/",response_model=TenantPublicWithDept)

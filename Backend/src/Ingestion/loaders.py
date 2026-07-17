@@ -61,7 +61,7 @@ def _chunk_bbox_and_section(
     return bbox, section_title
 
 
-async def load_document(file, department: str, department_id: uuid.UUID, tenant_id: uuid.UUID):
+async def load_document(file, department: str, department_id: uuid.UUID, tenant_id: uuid.UUID,document_id: uuid.UUID):
     print(f"loading document: {file.filename} for department: {department} and tenant_id: {tenant_id}")
     content = await file.read()
     doc_id = _make_doc_id(content)
@@ -109,6 +109,7 @@ async def load_document(file, department: str, department_id: uuid.UUID, tenant_
                     "char_start": start,
                     "char_end": end,
                     "chunk_index": idx,
+                    "document_id":document_id,
                     "timestamp": datetime.now().isoformat(),
                 },
             })
@@ -117,7 +118,8 @@ async def load_document(file, department: str, department_id: uuid.UUID, tenant_
     pool = await get_db_pool()
     async with pool.acquire() as con:
         for _chunk in all_chunks:
-            emb = await hug_embedding(_chunk["text"])
+            # emb = await hug_embedding(_chunk["text"])
+            emb = [1,2,3]
             await con.execute(
                 """
                 INSERT INTO SEMANTIC_MEMORY
@@ -137,3 +139,5 @@ async def load_document(file, department: str, department_id: uuid.UUID, tenant_
             )
 
     print(f"all {file.filename} documents ingested to {department} successfully")
+    
+
