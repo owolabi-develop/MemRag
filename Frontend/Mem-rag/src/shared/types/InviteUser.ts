@@ -1,5 +1,5 @@
 
-// types/user.ts
+
 
 export interface InviteUsers {
   email: string;

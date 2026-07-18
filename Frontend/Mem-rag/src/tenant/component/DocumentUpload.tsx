@@ -18,9 +18,18 @@ import {
   AlertCircle,
   CheckCircle2,
   FolderKanban,
+  Loader2,
+  Clock,
 } from "lucide-react";
 import { uploadDocument } from "../../shared/api/document.api";
 import { getDepartments } from "../../shared/api/department.api";
+import { useIngestStatusQuery } from "../../shared/hooks/useDocumentIngest";
+import {
+  addTrackedJob,
+  getTrackedJobs,
+  removeTrackedJob,
+  type TrackedJob,
+} from "../../shared/utils/ingestJobsStorage";
 import type { DepartmentOption } from "../../shared/types/department";
 import { ApiError } from "../../shared/api/httpClient"; // adjust to match your actual path
 import { useAuthStore } from "../../shared/store/authStore";
@@ -61,7 +70,7 @@ export async function documentUploadLoader({}: LoaderFunctionArgs) {
 
 interface ActionData {
   error?: string;
-  success?: boolean;
+  jobId?: string;
 }
 
 export async function documentUploadAction({
@@ -81,16 +90,123 @@ export async function documentUploadAction({
   }
 
   try {
-    // formData already contains exactly "file" and "department_id",
-    // matching the curl example, so it can be sent as-is.
-    await uploadDocument(formData);
-    return { success: true };
+    const response = await uploadDocument(formData);
+    return { jobId: response.job_id };
   } catch (err) {
     if (err instanceof ApiError) {
       return { error: err.message };
     }
     return { error: "Failed to upload document. Please try again." };
   }
+}
+
+// ---- Progress UI ----
+
+const STATUS_CONFIG = {
+  queued: {
+    label: "Queued",
+    description: "Waiting for a worker to pick this up…",
+    icon: Clock,
+    tone: "text-neutral-500",
+    bg: "bg-neutral-50",
+    border: "border-neutral-200",
+  },
+  in_progress: {
+    label: "Processing",
+    description: "Extracting, chunking, and embedding your document…",
+    icon: Loader2,
+    tone: "text-blue-700",
+    bg: "bg-blue-50",
+    border: "border-blue-200",
+  },
+  complete: {
+    label: "Complete",
+    description: "Document ingested and ready to search.",
+    icon: CheckCircle2,
+    tone: "text-green-700",
+    bg: "bg-green-50",
+    border: "border-green-200",
+  },
+  error: {
+    label: "Failed",
+    description: "Something went wrong while processing this document.",
+    icon: AlertCircle,
+    tone: "text-red-700",
+    bg: "bg-red-50",
+    border: "border-red-200",
+  },
+} as const;
+
+function IngestProgressCard({
+  job,
+  onDismiss,
+}: {
+  job: TrackedJob;
+  onDismiss: () => void;
+}) {
+  const { data, isLoading } = useIngestStatusQuery(job.jobId);
+  const status = data?.status ?? "queued";
+  const config = STATUS_CONFIG[status];
+  const Icon = config.icon;
+  const isTerminal = status === "complete" || status === "error";
+
+  return (
+    <div className={`rounded-xl border ${config.border} ${config.bg} p-4`}>
+      <div className="flex items-start gap-3">
+        <div
+          className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-white ${config.tone}`}
+        >
+          <Icon
+            size={16}
+            className={status === "in_progress" || (isLoading && !data) ? "animate-spin" : ""}
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <p className={`text-sm font-semibold ${config.tone}`}>{config.label}</p>
+            {isTerminal && (
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="flex-shrink-0 text-xs font-medium text-neutral-400 hover:text-neutral-700"
+              >
+                Dismiss
+              </button>
+            )}
+          </div>
+
+          <p className="mt-0.5 truncate text-xs text-neutral-500">{job.fileName}</p>
+
+          <p
+            className={`mt-2 text-xs leading-5 ${
+              status === "error" ? "text-red-600" : "text-neutral-500"
+            }`}
+          >
+            {status === "error" && data?.error ? data.error : config.description}
+          </p>
+
+          {status !== "error" && (
+            <div className="mt-3 flex items-center gap-1.5">
+              {(["queued", "in_progress", "complete"] as const).map((step) => {
+                const stepIndex = ["queued", "in_progress", "complete"].indexOf(status);
+                const thisIndex = ["queued", "in_progress", "complete"].indexOf(step);
+                const isActive = thisIndex <= stepIndex;
+                return (
+                  <div
+                    key={step}
+                    className={`h-1 flex-1 rounded-full transition-colors ${
+                      isActive ? "bg-neutral-900" : "bg-neutral-200"
+                    }`}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ---- Component ----
@@ -110,10 +226,26 @@ export default function DocumentUpload() {
   const [fileError, setFileError] = useState<string | null>(null);
   const [departmentError, setDepartmentError] = useState<string | null>(null);
 
-  // Reset the form after a successful upload — the action doesn't redirect,
-  // so nothing clears the inputs automatically.
+  // Restored from localStorage on mount — this is what makes progress
+  // survive navigation away and back, or a full page refresh.
+  const [trackedJobs, setTrackedJobs] = useState<TrackedJob[]>([]);
+
   useEffect(() => {
-    if (actionData?.success) {
+    setTrackedJobs(getTrackedJobs());
+  }, []);
+
+  // New job from a fresh upload → persist it and add it to the visible list.
+  useEffect(() => {
+    if (actionData?.jobId && file && departmentId) {
+      const job: TrackedJob = {
+        jobId: actionData.jobId,
+        fileName: file.name,
+        departmentId,
+        startedAt: new Date().toISOString(),
+      };
+      addTrackedJob(job);
+      setTrackedJobs((prev) => [...prev, job]);
+
       setFile(null);
       setDepartmentId("");
       setFileError(null);
@@ -121,7 +253,13 @@ export default function DocumentUpload() {
       if (inputRef.current) inputRef.current.value = "";
       formRef.current?.reset();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionData]);
+
+  function handleDismiss(jobId: string) {
+    removeTrackedJob(jobId);
+    setTrackedJobs((prev) => prev.filter((j) => j.jobId !== jobId));
+  }
 
   function validateAndSetFile(candidate: File | undefined) {
     if (!candidate) return;
@@ -181,17 +319,22 @@ export default function DocumentUpload() {
         <h2 className="font-semibold">Upload Document</h2>
       </div>
 
-      {actionData?.success && (
-        <div className="mt-4 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-          <CheckCircle2 size={16} />
-          Document uploaded successfully.
-        </div>
-      )}
-
       {actionData?.error && (
         <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle size={16} />
           {actionData.error}
+        </div>
+      )}
+
+      {trackedJobs.length > 0 && (
+        <div className="mt-4 space-y-3">
+          {trackedJobs.map((job) => (
+            <IngestProgressCard
+              key={job.jobId}
+              job={job}
+              onDismiss={() => handleDismiss(job.jobId)}
+            />
+          ))}
         </div>
       )}
 
@@ -263,9 +406,7 @@ export default function DocumentUpload() {
                 <FileTypeIcon extension={getFileExtension(file.name)} />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{file.name}</p>
-                  <p className="text-xs text-neutral-500">
-                    {formatBytes(file.size)}
-                  </p>
+                  <p className="text-xs text-neutral-500">{formatBytes(file.size)}</p>
                 </div>
               </div>
 

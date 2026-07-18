@@ -1,5 +1,5 @@
 
-/** What the registration FORM collects from the person */
+
 export interface RegisterFormValues {
   firstName: string;
   lastName: string;
@@ -7,7 +7,7 @@ export interface RegisterFormValues {
   password: string;
 }
 
-/** What actually gets POSTed to /users/register */
+
 export interface RegisterRequestPayload {
   email: string;
   first_name: string;
@@ -33,7 +33,7 @@ export interface RegisteredUser {
   must_change_password: boolean;
 }
 
-/** Response shape from POST /token */
+
 export interface TokenResponse {
   access_token: string;
   token_type: string;

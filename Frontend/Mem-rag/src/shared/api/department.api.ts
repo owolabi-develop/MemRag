@@ -1,4 +1,3 @@
-// api/department.ts
 
 import { apiRequest } from "../api/httpClient"; // adjust to match your actual path
 import { useAuthStore } from "../store/authStore";
