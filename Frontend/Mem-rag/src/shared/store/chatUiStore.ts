@@ -1,4 +1,4 @@
-// FILE: src/shared/store/chatUiStore.ts
+
 
 import { create } from "zustand";
 import type { Citation } from "../../chatsession/type/type";

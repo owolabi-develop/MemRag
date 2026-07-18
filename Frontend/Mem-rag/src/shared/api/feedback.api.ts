@@ -1,4 +1,3 @@
-// FILE: src/shared/api/feedback.api.ts
 
 import { apiRequest } from "./httpClient";
 import type { ApiThumb, FeedbackRecord } from "../../chatsession/type/type";
@@ -16,10 +15,6 @@ export function createFeedback(
 ): Promise<FeedbackRecord> {
   return apiRequest<FeedbackRecord>("/chat/feedback", {
     method: "POST",
-    // The sample curl for this one didn't include an Authorization
-    // header, unlike every other endpoint in this app — included
-    // here anyway for consistency; a bearer token on an endpoint that
-    // doesn't require one is harmless, the reverse would break.
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
   });

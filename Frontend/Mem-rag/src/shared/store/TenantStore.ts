@@ -2,7 +2,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { UUID } from "crypto";
 
-// 1. Define the store state and actions
 interface TenantState {
   id: UUID | null;
   setID: (id: UUID | null) => void;
@@ -18,7 +17,7 @@ export const useSTenantIDStore = create<TenantState>()(
       clearID: () => set({ id: null }),
     }),
     { 
-      name: "tenantId", // Key used in localStorage
+      name: "tenantId", 
     }
   )
 );

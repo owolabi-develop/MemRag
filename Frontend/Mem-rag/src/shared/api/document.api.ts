@@ -1,9 +1,20 @@
-// api/document.ts
 
-import { ApiError,apiRequest } from "../api/httpClient"; // adjust to match your actual path
+import {apiRequest,apiFileRequest } from "../api/httpClient"; // adjust to 
 import { useAuthStore } from "../store/authStore";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+
+export interface UploadDocumentResponse {
+  job_id: string;
+  status: "queued" | "in_progress" | "complete" | "error";
+}
+
+export interface IngestStatusResponse {
+  status: "queued" | "in_progress" | "complete" | "error";
+  success: boolean | null;
+  result: unknown;
+  error: string | null;
+}
+
 
 export interface UploadedDocument {
   id: string;
@@ -14,34 +25,21 @@ export interface UploadedDocument {
 
 export async function uploadDocument(
   formData: FormData
-): Promise<UploadedDocument> {
+): Promise<UploadDocumentResponse> {
   const token = useAuthStore.getState().accessToken;
-
-  const res = await fetch(`${API_BASE_URL}/documents/upload/`, {
-    method: "POST",
+  return apiFileRequest<UploadDocumentResponse>("/documents/upload/", formData, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-    body: formData,
   });
-
-  if (!res.ok) {
-    let detail: unknown;
-    try {
-      detail = await res.json();
-    } catch {
-      detail = undefined;
-    }
-    const message =
-      detail && typeof detail === "object" && "detail" in detail
-        ? String((detail as Record<string, unknown>).detail)
-        : `Upload failed (${res.status})`;
-    throw new ApiError(res.status, message, detail);
-  }
-
-  return res.json();
 }
 
+export async function getIngestStatus(jobId: string): Promise<IngestStatusResponse> {
+  return apiRequest<IngestStatusResponse>(
+    `/documents/upload/ingest/status/${jobId}`,
+    { method: "GET" }
+  );
+}
 
 export interface DocumentCountResponse {
   total_documents: number;

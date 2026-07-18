@@ -6,7 +6,13 @@ import pymupdf
 from langchain_text_splitters import MarkdownTextSplitter
 from src.embeddings.embedder import hug_embedding
 from src.connection.connections import get_db_pool
+from app.db import async_session_pool
+from app.models import Document,DocumentStatus,Department
+from app.utils.s3_storage import  build_object_key, upload_file_to_s3, SPACES_BUCKET_NAME
+from fastapi import Depends, HTTPException,status
 
+import random
+random.seed(42)
 
 def _make_doc_id(content: bytes) -> str:
     """Content hash -> stable id across re-uploads/renames of the same file."""
@@ -61,12 +67,63 @@ def _chunk_bbox_and_section(
     return bbox, section_title
 
 
-async def load_document(file, department: str, department_id: uuid.UUID, tenant_id: uuid.UUID,document_id: uuid.UUID):
-    print(f"loading document: {file.filename} for department: {department} and tenant_id: {tenant_id}")
-    content = await file.read()
-    doc_id = _make_doc_id(content)
+async def load_document(ctx:dict, filename,content_type,file_byte:bytes,department_name: str, department_id: uuid.UUID, tenant_id: uuid.UUID,current_user):
+    print(f"loading document: {filename} for department: {department_name} and tenant_id: {tenant_id}")
+    
+    document_id = ""
+    
+    
+    # handle s3 upload and open section
+    # open db section
+    async with async_session_pool() as session:
+        
+        department_obj = await session.get(Department, department_id)
+        if department_obj is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Department not found"
+            )
+        
+        document = Document(
+        tenant_id=tenant_id,
+        filename=filename,
+        content_type=content_type or "application/octet-stream",
+        size=len(file_byte),
+        bucket=SPACES_BUCKET_NAME,
+        object_key="",
+        uploaded_by=current_user,
+        status=DocumentStatus.UPLOADING,
+    )
 
-    doc = pymupdf.open(stream=content, filetype="pdf")
+        department_obj.documents.append(document)
+        session.add(department_obj)
+        await session.commit()
+        await session.refresh(document)  
+        
+        # reference the document id
+        document_id = document.id
+
+        object_key = build_object_key(tenant_id, department_id, document.id, filename)
+
+        try:
+            await upload_file_to_s3(
+                file_byte,object_key,content_type or "application/octet-stream"
+            )
+        except RuntimeError as e:
+            document.status = DocumentStatus.FAILED
+            session.add(document)
+            await session.commit()
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+
+        document.object_key = object_key
+        document.status = DocumentStatus.READY
+        session.add(document)
+        await session.commit()
+        await session.refresh(document)
+    
+    
+    doc_id = _make_doc_id(file_byte)
+
+    doc = pymupdf.open(stream=file_byte, filetype="pdf")
     md_pages = pymupdf4llm.to_markdown(doc, page_chunks=True)
     splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=100)
 
@@ -98,9 +155,9 @@ async def load_document(file, department: str, department_id: uuid.UUID, tenant_
                 "chunk_id": _make_chunk_id(doc_id, page_number, idx),
                 "text": chunk_text,
                 "metadata": {
-                    "source": file.filename,
+                    "source": filename,
                     "doc_id": doc_id,
-                    "department": department,
+                    "department": department_name,
                     "department_id": str(department_id),
                     "tenant_id": str(tenant_id),
                     "page": page_number,
@@ -109,7 +166,7 @@ async def load_document(file, department: str, department_id: uuid.UUID, tenant_
                     "char_start": start,
                     "char_end": end,
                     "chunk_index": idx,
-                    "document_id":document_id,
+                    "document_id":str(document_id),
                     "timestamp": datetime.now().isoformat(),
                 },
             })
@@ -119,7 +176,7 @@ async def load_document(file, department: str, department_id: uuid.UUID, tenant_
     async with pool.acquire() as con:
         for _chunk in all_chunks:
             # emb = await hug_embedding(_chunk["text"])
-            emb = [1,2,3]
+            emb = [round(random.uniform(-1.0, 1.0), 4) for _ in range(768)]
             await con.execute(
                 """
                 INSERT INTO SEMANTIC_MEMORY
@@ -131,13 +188,13 @@ async def load_document(file, department: str, department_id: uuid.UUID, tenant_
                     embedding = EXCLUDED.embedding
                 """,
                 _chunk["text"],
-                department,
+                department_name,
                 tenant_id,
                 department_id,
                 _chunk["metadata"],
                 emb,
             )
 
-    print(f"all {file.filename} documents ingested to {department} successfully")
+    print(f"all {filename} documents ingested to {department_name} successfully")
     
 

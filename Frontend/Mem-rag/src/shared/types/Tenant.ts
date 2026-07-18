@@ -1,4 +1,3 @@
-// types/tenant.ts
 
 export interface TenantCreateRequest {
   name: string;

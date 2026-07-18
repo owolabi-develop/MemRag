@@ -32,10 +32,10 @@ export function useInviteUserMutation() {
       if (!accessToken) {
         throw new ApiError(401, "Not authenticated");
       }
-      if (!tenantId) {                                // ← add this guard here
+      if (!tenantId) {                           
         throw new ApiError(400, "No workspace selected. Try refreshing the page.");
       }
-      return postInviteUser(tenantId, payload, accessToken);  // ← tenantId now passed in here
+      return postInviteUser(tenantId, payload, accessToken); 
     },
     onSuccess: (newInvite) => {
       queryClient.setQueryData<InviteUsers[]>(invitedUsersQueryKey, (old) =>
