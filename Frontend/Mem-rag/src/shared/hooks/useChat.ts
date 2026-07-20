@@ -90,7 +90,13 @@ function mapCitations(raw: RawCitation[] | undefined): Citation[] {
   }));
 }
 
-
+/**
+ * Pairs the backend's flat, alternating user/assistant message list
+ * into the { user_query, ai_response } turns the UI actually renders.
+ * feedback/feedbackId start null — there's no GET-existing-feedback
+ * data on this endpoint, so history doesn't carry prior feedback
+ * state; each turn starts fresh per page load.
+ */
 function toConversationTurns(messages: RawMessage[]): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
 
@@ -131,6 +137,15 @@ export function useSessionQuery(sessionId: string | null) {
   });
 }
 
+/**
+ * POST /chat/ (form-urlencoded: user_query + session_id). On success,
+ * appends the new turn straight into the session query cache — no
+ * refetch, shows up instantly. No message id comes back from this
+ * endpoint, so the turn's id is client-generated; if you reload the
+ * page, the session-detail refetch will replace it with the server's
+ * real ids for that same exchange, so this is only a transient id
+ * for the current tab session, not something to rely on elsewhere.
+ */
 export function useSendMessageMutation(sessionId: string | null) {
   const queryClient = useQueryClient();
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -156,15 +171,43 @@ export function useSendMessageMutation(sessionId: string | null) {
         feedbackId: null,
       };
 
+      // Instant append — the message shows up immediately, no wait
+      // on a refetch.
       queryClient.setQueryData<SessionQueryData | undefined>(sessionQueryKey(sessionId), (old) =>
         old
           ? { ...old, conversations: [...old.conversations, newTurn] }
           : { title: "New chat", conversations: [newTurn] }
       );
+
+      // The backend can rename a session (e.g. "new" -> a generated
+      // title) once it's seen the first exchange. The sessions list
+      // isn't touched by the optimistic update above, so without
+      // this it stays showing the stale title until something else
+      // happens to refetch it (a full page reload). Invalidating
+      // here — rather than setQueryData — triggers a silent
+      // background refetch: the sidebar keeps showing the current
+      // title until the fresh one arrives, no flicker either way.
+      // Same reasoning applies to the header title, which reads from
+      // this session's own detail query — invalidate it too so it
+      // picks up a renamed title. This also reconciles the optimistic
+      // turn above with the server's authoritative version (real
+      // message ids instead of the temporary crypto.randomUUID(),
+      // which matters once feedback needs a real id to PATCH against)
+      // once the background refetch resolves — no flicker, since
+      // invalidateQueries keeps showing current data until then.
+      queryClient.invalidateQueries({ queryKey: sessionQueryKey(sessionId) });
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
     },
   });
 }
 
+/**
+ * First feedback on a turn -> POST /chat/feedback (creates a record,
+ * response includes the id). Changing it afterward -> PATCH
+ * /chat/feedback/{id}. Which one fires is decided by whether the
+ * turn already has a feedbackId, which onSuccess writes into the
+ * session query cache directly (no refetch needed).
+ */
 export function useFeedbackMutation(sessionId: string | null) {
   const queryClient = useQueryClient();
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -209,7 +252,10 @@ export function useFeedbackMutation(sessionId: string | null) {
   });
 }
 
-
+/**
+ * Fetches the real viewable URL for a citation's source document,
+ * keyed by the citation's document_id.
+ */
 export function useDocumentViewMutation() {
   const accessToken = useAuthStore((s) => s.accessToken);
 

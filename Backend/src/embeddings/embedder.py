@@ -19,14 +19,21 @@ async def google_embedding(content:str,model_output_dimensionality:int=1536):
 
 
 
+LOCAL_MODEL_PATH = "./mpnet_base_v2_local"
+HUB_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
+
+if os.path.isdir(LOCAL_MODEL_PATH):
+
+    model = SentenceTransformer(LOCAL_MODEL_PATH)
+else:
+    model = SentenceTransformer(HUB_MODEL_NAME)
+    model.save(LOCAL_MODEL_PATH)
+
 
 async def hug_embedding(content: str):
-    model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
     loop = asyncio.get_running_loop()
-
     embedding = await loop.run_in_executor(
         None,
         lambda: model.encode(content, normalize_embeddings=True)
     )
-
     return embedding.tolist()

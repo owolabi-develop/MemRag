@@ -13,14 +13,16 @@ import {
   AlertCircle,
   Loader2,
   RefreshCw,
+  Clock,
 } from "lucide-react";
 import {
   useConnectMutation,
   useConnectorStatusQuery,
   useDisconnectMutation,
   useSyncDocumentsMutation,
-  useConnectGoogleDriveMutation
+  useConnectGoogleDriveMutation,
 } from "../../shared/hooks/useConnectors";
+import { useIngestStatusQuery } from "../../shared/hooks/useDocumentIngest";
 import type { ConnectorId, RemoteItem } from "../../shared/api/connectors.api";
 
 import { getDepartments } from "../../shared/api/department.api";
@@ -45,10 +47,7 @@ interface ConnectorConfig {
   description: string;
   icon: typeof HardDrive;
   accent: string;
-  // Text-field based connectors (S3, Dropbox) use `fields`.
   fields: CredentialField[];
-  // File-based connectors (Google Drive service account JSON) use this
-  // instead — mutually exclusive with `fields` at the UI level.
   fileField?: {
     name: string;
     label: string;
@@ -56,7 +55,6 @@ interface ConnectorConfig {
     helperText?: string;
   };
 }
-
 
 const CONNECTORS: ConnectorConfig[] = [
   {
@@ -115,7 +113,6 @@ function formatBytes(bytes: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Flat checkbox-list dropdown, keyed by path. Folder rows are shown but disabled. */
 function MultiSelectDropdown({
   options,
   selectedPaths,
@@ -216,6 +213,34 @@ function MultiSelectDropdown({
   );
 }
 
+// ---- Sync job progress (reuses the same status endpoint as document upload) ----
+
+const STATUS_CONFIG = {
+  queued: { label: "Queued", tone: "text-neutral-500", bg: "bg-neutral-50", border: "border-neutral-200", icon: Clock },
+  in_progress: { label: "Processing", tone: "text-blue-700", bg: "bg-blue-50", border: "border-blue-200", icon: Loader2 },
+  complete: { label: "Complete", tone: "text-green-700", bg: "bg-green-50", border: "border-green-200", icon: CheckCircle2 },
+  error: { label: "Failed", tone: "text-red-700", bg: "bg-red-50", border: "border-red-200", icon: AlertCircle },
+} as const;
+
+function SyncJobRow({ jobId, fileName }: { jobId: string; fileName: string }) {
+  const { data } = useIngestStatusQuery(jobId);
+  const status = (data?.status ?? "queued") as keyof typeof STATUS_CONFIG;
+  const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.queued;
+  const Icon = config.icon;
+
+  return (
+    <div className={`flex items-center justify-between rounded-lg border ${config.border} ${config.bg} px-3 py-2 text-xs`}>
+      <span className="flex min-w-0 items-center gap-2">
+        <Icon size={13} className={`flex-shrink-0 ${config.tone} ${status === "in_progress" ? "animate-spin" : ""}`} />
+        <span className="truncate font-medium text-neutral-700">{fileName}</span>
+      </span>
+      <span className={`flex-shrink-0 font-medium ${config.tone}`}>
+        {status === "error" && data?.error ? data.error : config.label}
+      </span>
+    </div>
+  );
+}
+
 export async function ConnectorsDepartmentLoader({}: LoaderFunctionArgs) {
   const token = useAuthStore.getState().accessToken;
   if (!token) {
@@ -244,15 +269,20 @@ function ConnectorCard({ config }: { config: ConnectorConfig }) {
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
-  // Local override, set the moment a connect call succeeds — used instead
-  // of waiting on statusQuery to refetch, since that refetch depends on
-  // an invalidation key we haven't confirmed matches this hook's real
-  // queryKey yet. Once that's verified, statusQuery.data alone would be
-  // enough and this local state could be dropped.
+  // Credentials captured at connect time so the same values can be
+  // resent to /connectors/sync later — matches the "no server storage,
+  // client resends credentials" model established earlier for connectors.
+  const [savedCredentials, setSavedCredentials] = useState<Record<string, string>>({});
+
   const [localConnected, setLocalConnected] = useState<{
     status: "connected";
     items: RemoteItem[];
   } | null>(null);
+
+  // Jobs from the most recent sync — each paired with the file name it
+  // came from (matched by array position, since /connectors/sync returns
+  // job ids in the same order file_paths were sent).
+  const [syncJobs, setSyncJobs] = useState<{ jobId: string; fileName: string }[]>([]);
 
   const isConnected =
     localConnected !== null || statusQuery.data?.status === "connected";
@@ -273,9 +303,6 @@ function ConnectorCard({ config }: { config: ConnectorConfig }) {
       body.append(config.fileField.name, file);
       connectGoogleDriveMutation.mutate(body, {
         onSuccess: (data) => {
-          // data.items may legitimately be [] (nothing shared with the
-          // service account yet, or an empty folder) — that's fine, we
-          // still want to show the connected view either way.
           setLocalConnected({ status: "connected", items: data.items ?? [] });
         },
       });
@@ -285,6 +312,7 @@ function ConnectorCard({ config }: { config: ConnectorConfig }) {
     const credentials = Object.fromEntries(
       config.fields.map((field) => [field.name, String(formData.get(field.name) ?? "")])
     );
+    setSavedCredentials(credentials);
     connectMutation.mutate(credentials, {
       onSuccess: (data) => {
         setLocalConnected({ status: "connected", items: data.items ?? [] });
@@ -297,6 +325,8 @@ function ConnectorCard({ config }: { config: ConnectorConfig }) {
     setSelectedPaths([]);
     setSelectedFileName(null);
     setLocalConnected(null);
+    setSyncJobs([]);
+    setSavedCredentials({});
     syncMutation.reset();
     disconnectMutation.mutate();
   }
@@ -322,9 +352,30 @@ function ConnectorCard({ config }: { config: ConnectorConfig }) {
 
     if (hasError) return;
 
+    // Credentials for connect-file connectors (Google Drive) can't be
+    // resent this way — only the JSON key upload was captured, not raw
+    // field values. If Google Drive sync needs to hit the same
+    // credential-resend model, its form/credential shape would need
+    // rethinking; flagging rather than guessing at a fix here.
     syncMutation.mutate(
-      { connectorId: config.id, departmentId, filePaths: selectedPaths },
-      { onSuccess: () => setSelectedPaths([]) }
+      {
+        connectorId: config.id,
+        credentials: savedCredentials,
+        departmentId,
+        filePaths: selectedPaths,
+      },
+      {
+        onSuccess: (jobs) => {
+          const paths = selectedPaths;
+          setSyncJobs(
+            jobs.map((job, i) => ({
+              jobId: job.job_id,
+              fileName: items.find((it) => it.path === paths[i])?.name ?? paths[i],
+            }))
+          );
+          setSelectedPaths([]);
+        },
+      }
     );
   }
 
@@ -490,17 +541,21 @@ function ConnectorCard({ config }: { config: ConnectorConfig }) {
 
       {isConnected && (
         <form onSubmit={handleSyncSubmit} className="mt-5 space-y-4 border-t border-neutral-100 pt-5">
-          {syncMutation.isSuccess && (
-            <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-              <CheckCircle2 size={16} />
-              {syncMutation.data.message}
-            </div>
-          )}
-
           {syncMutation.isError && (
             <div className="flex items-center gap-1.5 text-sm text-red-600">
               <AlertCircle size={14} />
               {(syncMutation.error as Error).message}
+            </div>
+          )}
+
+          {syncJobs.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-neutral-500">
+                Sync progress ({syncJobs.length} file{syncJobs.length > 1 ? "s" : ""})
+              </p>
+              {syncJobs.map((job) => (
+                <SyncJobRow key={job.jobId} jobId={job.jobId} fileName={job.fileName} />
+              ))}
             </div>
           )}
 
@@ -588,7 +643,8 @@ export default function Connectors() {
           </p>
         </div>
 
-        <a href="/dashboard/connectors"
+        
+         < a href="/dashboard/connectors"
           className="text-sm font-medium text-neutral-500 underline underline-offset-2 hover:text-neutral-900"
         >
           Manage

@@ -8,3 +8,6 @@ Backend/src/Ingestion/__pycache__/
 Backend/src/chuncking/__pycache__/
 Backend/src/connection/__pycache__/connections.cpython-314.pyc
 frontend/node_modules
+backend/mpnet_base_v2_local
+backend/src/retrieval/ms_marco_minilm_l6_v2_local
+backend/src/prompts/llmlingua2_bert_meetingbank_local

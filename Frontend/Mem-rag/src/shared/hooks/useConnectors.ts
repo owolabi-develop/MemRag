@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
 import {
   connectConnector,
   disconnectConnector,
@@ -7,7 +8,7 @@ import {
   connectGoogleDriveWithFile,
   type ConnectorId,
   type ConnectorStatusResponse,
-  type SyncPayload,
+  type SyncDocumentsPayload, type IngestJob 
 } from "../../shared/api/connectors.api";
 
 function statusKey(connectorId: ConnectorId) {
@@ -50,10 +51,11 @@ export function useDisconnectMutation(connectorId: ConnectorId) {
   });
 }
 
-/** Sends department_id + selected file paths to the backend for fetch-and-upload. */
+
+
 export function useSyncDocumentsMutation() {
-  return useMutation({
-    mutationFn: (payload: SyncPayload) => syncDocuments(payload),
+  return useMutation<IngestJob[], Error, SyncDocumentsPayload>({
+    mutationFn: syncDocuments,
   });
 }
 
@@ -64,8 +66,6 @@ export function useConnectGoogleDriveMutation() {
   return useMutation({
     mutationFn: connectGoogleDriveWithFile,
     onSuccess: () => {
-      // Matches whatever queryKey useConnectorStatusQuery("google_drive")
-      // actually uses — adjust if it's keyed differently.
       queryClient.invalidateQueries({ queryKey: ["connectorStatus", "google_drive"] });
     },
   });

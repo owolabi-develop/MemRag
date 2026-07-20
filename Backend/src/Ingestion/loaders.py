@@ -175,8 +175,8 @@ async def load_document(ctx:dict, filename,content_type,file_byte:bytes,departme
     pool = await get_db_pool()
     async with pool.acquire() as con:
         for _chunk in all_chunks:
-            # emb = await hug_embedding(_chunk["text"])
-            emb = [round(random.uniform(-1.0, 1.0), 4) for _ in range(768)]
+            emb = await hug_embedding(_chunk["text"])
+            # emb = [round(random.uniform(-1.0, 1.0), 4) for _ in range(768)]
             await con.execute(
                 """
                 INSERT INTO SEMANTIC_MEMORY

@@ -5,10 +5,6 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-// react-pdf needs a worker script — pointed at a CDN matching the
-// installed pdfjs-dist version rather than fighting Vite's bundler
-// over worker asset paths. Fine for now; self-host later if you'd
-// rather not depend on unpkg in production.
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 import {
   Plus,
@@ -40,7 +36,7 @@ import {
 import { useChatUiStore } from "../../shared/store/chatUiStore";
 import { useAuthStore } from "../../shared/store/authStore";
 import type { ChatSessionSummary, Citation, ConversationTurn } from "../../chatsession/type/type";
-import groundly_logo from "../../assets/images/Groundly-logo.png"; // adjust path to match your project structure
+import groundly_logo from "../../assets/images/Groundly-logo.png";
 
 function getInitials(name: string) {
   const parts = name.split(" ").filter(Boolean);
@@ -50,11 +46,6 @@ function getInitials(name: string) {
   return name.slice(0, 2).toUpperCase();
 }
 
-/**
- * created_at can be null (confirmed from the real /session/user/sessions
- * response) — everything with a null date buckets into "Recent" rather
- * than crashing on `new Date(null)`.
- */
 function formatRelativeTime(dateString: string | null) {
   if (!dateString) return "Recent";
   const diffMs = Date.now() - new Date(dateString).getTime();
@@ -85,13 +76,6 @@ function SessionListSkeleton() {
   );
 }
 
-/**
- * Left panel — light navigation rail with the Groundly wordmark,
- * plain-text nav rows, account footer with a working "back to
- * dashboard" and "log out". Fixed-width, full-height, static on
- * md+; a slide-over drawer with its own in-panel collapse icon on
- * small screens.
- */
 function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const sessionsQuery = useSessionsQuery();
   const createSessionMutation = useCreateSessionMutation();
@@ -135,7 +119,7 @@ function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
 
   return (
     <>
-      {/* Backdrop — mobile/tablet only, sits within the chat area (not the whole viewport) */}
+
       {isOpen && (
         <div
           onClick={onClose}
@@ -145,7 +129,7 @@ function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
       )}
 
       <div
-        className={`absolute inset-y-0 left-0 z-30 flex h-full w-72 min-h-0 flex-col border-r border-neutral-200 bg-white transition-transform duration-200 ease-out md:static md:z-auto md:h-full md:translate-x-0 ${
+        className={`absolute inset-y-0 left-0 z-30 flex h-full w-60 min-h-0 flex-col border-r border-neutral-200 bg-white transition-transform duration-200 ease-out md:static md:z-auto md:h-full md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -483,7 +467,7 @@ function TypingIndicator() {
   );
 }
 
-/** Centered greeting shown inside the scrollable message area when there's no conversation yet */
+
 function EmptyStateGreeting() {
   return (
     <div className="flex h-full min-h-[60vh] flex-col items-center justify-center px-4 text-center sm:px-6">
@@ -501,11 +485,7 @@ function EmptyStateGreeting() {
   );
 }
 
-/**
- * Shown instead of the composer when the person isn't in any
- * department yet — chatting is gated on department membership since
- * that's what scopes which documents they can query.
- */
+
 function NoDepartmentNotice() {
   return (
     <div className="flex h-full min-h-[60vh] flex-col items-center justify-center px-4 text-center sm:px-6">
@@ -578,10 +558,6 @@ interface ComposerProps {
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
 }
 
-/**
- * Always docked to the bottom of the conversation panel — never
- * centered, regardless of whether there's an active conversation.
- */
 function Composer({ draft, onDraftChange, onSubmit, isPending, disabled, textareaRef }: ComposerProps) {
   function autoGrowTextarea() {
     const el = textareaRef.current;
@@ -638,11 +614,6 @@ function Composer({ draft, onDraftChange, onSubmit, isPending, disabled, textare
   );
 }
 
-/**
- * Center panel: header (fixed) + conversation (the ONLY thing that
- * scrolls) + composer (fixed to the bottom at all times, including
- * the empty state).
- */
 function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const activeSessionId = useChatUiStore((s) => s.activeSessionId);
   const setActiveSessionId = useChatUiStore((s) => s.setActiveSessionId);
@@ -813,7 +784,7 @@ interface PdfPageViewProps {
  */
 function PdfPageView({ fileUrl, initialPage, bbox }: PdfPageViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(360);
+  const [containerWidth, setContainerWidth] = useState(440);
   const [pageNumber, setPageNumber] = useState(initialPage);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [nativeSize, setNativeSize] = useState<{ width: number; height: number } | null>(null);
@@ -879,8 +850,7 @@ function PdfPageView({ fileUrl, initialPage, bbox }: PdfPageViewProps) {
         </div>
       </div>
 
-      {/* Page navigation — always visible so the person can browse
-          around the cited page for surrounding context */}
+  
       <div className="flex flex-shrink-0 items-center justify-between border-t border-neutral-200 bg-white px-4 py-2.5">
         <button
           type="button"
@@ -908,12 +878,6 @@ function PdfPageView({ fileUrl, initialPage, bbox }: PdfPageViewProps) {
   );
 }
 
-/**
- * Right panel: full-screen overlay on small/medium screens, static
- * full-height side panel on large screens. Explicitly h-full at
- * every level so the PDF viewer always fills the available height
- * regardless of document length.
- */
 function CitationDrawer() {
   const activeCitation = useChatUiStore((s) => s.activeCitation);
   const closeCitation = useChatUiStore((s) => s.closeCitation);
@@ -933,7 +897,7 @@ function CitationDrawer() {
       {/* Backdrop — small/medium screens only */}
       <div className="absolute inset-0 bg-neutral-900/20 lg:hidden" onClick={closeCitation} aria-hidden="true" />
 
-      <div className="absolute inset-y-0 right-0 flex h-full w-full min-h-0 max-w-md flex-col border-l border-neutral-200 bg-white lg:static lg:h-full lg:w-[380px] lg:max-w-none">
+      <div className="absolute inset-y-0 right-0 flex h-full w-full min-h-0 max-w-lg flex-col border-l border-neutral-200 bg-white lg:static lg:h-full lg:w-[480px] lg:max-w-none">
         <div className="flex h-14 flex-shrink-0 items-center justify-between gap-3 border-b border-neutral-200 px-4">
           <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50">
@@ -992,15 +956,6 @@ function CitationDrawer() {
   );
 }
 
-/**
- * Root shell — self-bounding on purpose. Uses h-screen rather than
- * h-full so this component never depends on an ancestor happening
- * to provide a real pixel height; the page itself can never scroll.
- * Only two things scroll inside it: ChatSessionList's own session
- * list, and ConversationView's own message area. Everything else
- * (header, composer, citation panel chrome, sidebar chrome) is
- * flex-shrink-0 and fixed in place.
- */
 export default function ChatComponent() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 

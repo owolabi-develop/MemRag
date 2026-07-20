@@ -103,7 +103,7 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
         )
         usage = await calculate_context_usage(memory_context)
 
-    context = f"# Question\n{query}\n\n Department ID{department_id}\n\n #Tenant ID{tenant_id}\n\n{memory_context} \n Department Name: {departments}\n current userName: {user_details}"
+    context = f"# Question\n{query}\n\n Department IDS{department_id}\n\n #Tenant ID{tenant_id}\n\n{memory_context} \n Department Name: {departments}\n current userName: {user_details}"
 
     dynamic_tools = await memory_manager.read_toolbox(query, k=6)
     print("Tools:")
@@ -133,6 +133,7 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
                 for k, v in tool_args.items()
             }
             print(f"{tool_name}")
+        
 
             try:
                 result = await execute_tool(
@@ -151,6 +152,7 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
             if tool_name == KNOWLEDGE_BASE_TOOL_NAME and status == "success":
                 try:
                     parsed = json_lib.loads(result)
+                    
                     all_retrieved_docs.extend(parsed.get("documents", []))
                 except (json_lib.JSONDecodeError, AttributeError):
                     print(f"warning: could not parse {tool_name} result for citations")
