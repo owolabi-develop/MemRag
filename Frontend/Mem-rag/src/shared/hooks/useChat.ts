@@ -150,7 +150,12 @@ export function useSendMessageMutation(sessionId: string | null) {
   const queryClient = useQueryClient();
   const accessToken = useAuthStore((s) => s.accessToken);
 
-  return useMutation<{ answer: string; citations: Citation[] }, ApiError, string>({
+  return useMutation<
+    { answer: string; citations: Citation[] },
+    ApiError,
+    string,
+    { tempId: string }
+  >({
     mutationFn: async (userQuery) => {
       if (!accessToken) throw new ApiError(401, "Not authenticated");
       if (!sessionId) throw new ApiError(400, "No session selected");
@@ -161,23 +166,42 @@ export function useSendMessageMutation(sessionId: string | null) {
         citations: mapCitations(data.response.citations),
       };
     },
-    onSuccess: (result, userQuery) => {
-      const newTurn: ConversationTurn = {
-        id: crypto.randomUUID(),
-        user_query: userQuery,
-        ai_response: result.answer,
-        citations: result.citations,
-        feedback: null,
-        feedbackId: null,
-      };
+    // Show the user's own message the instant they hit send — don't
+    // wait for the response to render anything. ai_response starts
+    // empty; ConversationTurnView renders typing dots in that exact
+    // spot for any turn whose ai_response is still "".
+    onMutate: async (userQuery) => {
+      const tempId = crypto.randomUUID();
 
-      // Instant append — the message shows up immediately, no wait
-      // on a refetch.
-      queryClient.setQueryData<SessionQueryData | undefined>(sessionQueryKey(sessionId), (old) =>
-        old
-          ? { ...old, conversations: [...old.conversations, newTurn] }
-          : { title: "New chat", conversations: [newTurn] }
-      );
+      queryClient.setQueryData<SessionQueryData | undefined>(sessionQueryKey(sessionId), (old) => {
+        const pendingTurn: ConversationTurn = {
+          id: tempId,
+          user_query: userQuery,
+          ai_response: "",
+          citations: [],
+          feedback: null,
+          feedbackId: null,
+        };
+        return old
+          ? { ...old, conversations: [...old.conversations, pendingTurn] }
+          : { title: "New chat", conversations: [pendingTurn] };
+      });
+
+      return { tempId };
+    },
+    onSuccess: (result, _userQuery, context) => {
+      // Fill in the same turn that onMutate created — same id, so
+      // this replaces the typing dots with the real answer instead
+      // of appending a second entry.
+      queryClient.setQueryData<SessionQueryData | undefined>(sessionQueryKey(sessionId), (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          conversations: old.conversations.map((t) =>
+            t.id === context?.tempId ? { ...t, ai_response: result.answer, citations: result.citations } : t
+          ),
+        };
+      });
 
       // The backend can rename a session (e.g. "new" -> a generated
       // title) once it's seen the first exchange. The sessions list
@@ -187,16 +211,24 @@ export function useSendMessageMutation(sessionId: string | null) {
       // here — rather than setQueryData — triggers a silent
       // background refetch: the sidebar keeps showing the current
       // title until the fresh one arrives, no flicker either way.
-      // Same reasoning applies to the header title, which reads from
-      // this session's own detail query — invalidate it too so it
-      // picks up a renamed title. This also reconciles the optimistic
-      // turn above with the server's authoritative version (real
-      // message ids instead of the temporary crypto.randomUUID(),
-      // which matters once feedback needs a real id to PATCH against)
-      // once the background refetch resolves — no flicker, since
-      // invalidateQueries keeps showing current data until then.
       queryClient.invalidateQueries({ queryKey: sessionQueryKey(sessionId) });
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+    },
+    onError: (err, _userQuery, context) => {
+      // Leave the user's message visible rather than making it
+      // vanish — replace the typing dots with an inline error
+      // instead of a detached banner elsewhere on the page.
+      queryClient.setQueryData<SessionQueryData | undefined>(sessionQueryKey(sessionId), (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          conversations: old.conversations.map((t) =>
+            t.id === context?.tempId
+              ? { ...t, ai_response: err.message || "Couldn't get a response. Please try again." }
+              : t
+          ),
+        };
+      });
     },
   });
 }

@@ -5,6 +5,10 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
+// react-pdf needs a worker script — pointed at a CDN matching the
+// installed pdfjs-dist version rather than fighting Vite's bundler
+// over worker asset paths. Fine for now; self-host later if you'd
+// rather not depend on unpkg in production.
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 import {
   Plus,
@@ -36,7 +40,7 @@ import {
 import { useChatUiStore } from "../../shared/store/chatUiStore";
 import { useAuthStore } from "../../shared/store/authStore";
 import type { ChatSessionSummary, Citation, ConversationTurn } from "../../chatsession/type/type";
-import groundly_logo from "../../assets/images/Groundly-logo.png";
+import groundly_logo from "../../assets/images/Groundly-logo.png"; // adjust path to match your project structure
 
 function getInitials(name: string) {
   const parts = name.split(" ").filter(Boolean);
@@ -45,6 +49,7 @@ function getInitials(name: string) {
   }
   return name.slice(0, 2).toUpperCase();
 }
+
 
 function formatRelativeTime(dateString: string | null) {
   if (!dateString) return "Recent";
@@ -76,6 +81,13 @@ function SessionListSkeleton() {
   );
 }
 
+/**
+ * Left panel — light navigation rail with the Groundly wordmark,
+ * plain-text nav rows, account footer with a working "back to
+ * dashboard" and "log out". Fixed-width, full-height, static on
+ * md+; a slide-over drawer with its own in-panel collapse icon on
+ * small screens.
+ */
 function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const sessionsQuery = useSessionsQuery();
   const createSessionMutation = useCreateSessionMutation();
@@ -115,11 +127,18 @@ function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
   const filteredSessions = (sessionsQuery.data ?? []).filter((s) =>
     s.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
-  const groups = groupSessions(filteredSessions);
+
+  const sortedSessions = activeSessionId
+    ? [
+        ...filteredSessions.filter((s) => s.id === activeSessionId),
+        ...filteredSessions.filter((s) => s.id !== activeSessionId),
+      ]
+    : filteredSessions;
+
+  const groups = groupSessions(sortedSessions);
 
   return (
     <>
-
       {isOpen && (
         <div
           onClick={onClose}
@@ -256,7 +275,6 @@ function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
   );
 }
 
-/** Hover-revealed action row under an assistant response: copy + feedback */
 function MessageActions({
   turn,
   onFeedback,
@@ -310,14 +328,6 @@ function MessageActions({
   );
 }
 
-/** Renders one Q&A pair — user bubble, then plain assistant text with citations + actions */
-/**
- * Splits ai_response text on [p.N]-style markers and turns each one
- * that matches a real citation into a clickable inline button — same
- * click behavior as the "Sources" chips below the message. Markers
- * that don't match any citation in this turn render as plain text
- * rather than a dead button.
- */
 function renderAnswerWithCitations(
   text: string,
   citations: Citation[],
@@ -354,8 +364,7 @@ function renderAnswerWithCitations(
         </button>
       );
     } else {
-      // No matching citation for this marker — drop it rather than
-      // showing raw "[p.N]" bracket text, which reads as unfinished.
+    
     }
 
     lastIndex = markerRegex.lastIndex;
@@ -379,9 +388,6 @@ function ConversationTurnView({
   const activeCitation = useChatUiStore((s) => s.activeCitation);
   const documentViewMutation = useDocumentViewMutation();
 
-  // Stable numbering shared between the inline superscript badges and
-  // the source list below, so "3" inline and "3" in the list are
-  // visibly the same reference.
   const citationNumbers = new Map(turn.citations.map((c, i) => [c.id, i + 1]));
 
   function handleCitationClick(citation: Citation) {
@@ -390,8 +396,6 @@ function ConversationTurnView({
         openCitation({ ...citation, filePath: doc.url, documentName: doc.filename });
       },
       onError: () => {
-        // Falls back to the placeholder path rather than blocking the
-        // drawer from opening at all.
         openCitation(citation);
       },
     });
@@ -408,65 +412,62 @@ function ConversationTurnView({
 
       {/* Assistant response */}
       <div className="group/turn py-3">
-        <p className="whitespace-pre-wrap text-[15px] leading-7 text-neutral-800">
-          {renderAnswerWithCitations(turn.ai_response, turn.citations, citationNumbers, handleCitationClick)}
-        </p>
-
-        {turn.citations.length > 0 && (
-          <div className="mt-3.5">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
-              Sources
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {turn.citations.map((citation) => {
-                const isOpen = activeCitation?.id === citation.id;
-                const number = citationNumbers.get(citation.id);
-                return (
-                  <button
-                    key={citation.id}
-                    type="button"
-                    onClick={() => handleCitationClick(citation)}
-                    className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                      isOpen
-                        ? "border-neutral-900 bg-neutral-900 text-white"
-                        : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400 hover:text-neutral-900"
-                    }`}
-                  >
-                    <span
-                      className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
-                        isOpen ? "bg-white/15 text-white" : "bg-neutral-100 text-neutral-500"
-                      }`}
-                    >
-                      {number}
-                    </span>
-                    <FileText size={11} className="flex-shrink-0" />
-                    <span className="max-w-[140px] truncate">{citation.documentName}</span>
-                    <span className={isOpen ? "text-neutral-300" : "text-neutral-400"}>p.{citation.page}</span>
-                  </button>
-                );
-              })}
-            </div>
+        {turn.ai_response === "" ? (
+          <div className="flex items-center gap-1 py-1.5">
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-neutral-300 [animation-delay:-0.3s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-neutral-300 [animation-delay:-0.15s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-neutral-300" />
           </div>
+        ) : (
+          <>
+            <p className="whitespace-pre-wrap text-[15px] leading-7 text-neutral-800">
+              {renderAnswerWithCitations(turn.ai_response, turn.citations, citationNumbers, handleCitationClick)}
+            </p>
+
+            {turn.citations.length > 0 && (
+              <div className="mt-3.5">
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                  Sources
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {turn.citations.map((citation) => {
+                    const isOpen = activeCitation?.id === citation.id;
+                    const number = citationNumbers.get(citation.id);
+                    return (
+                      <button
+                        key={citation.id}
+                        type="button"
+                        onClick={() => handleCitationClick(citation)}
+                        className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                          isOpen
+                            ? "border-neutral-900 bg-neutral-900 text-white"
+                            : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400 hover:text-neutral-900"
+                        }`}
+                      >
+                        <span
+                          className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+                            isOpen ? "bg-white/15 text-white" : "bg-neutral-100 text-neutral-500"
+                          }`}
+                        >
+                          {number}
+                        </span>
+                        <FileText size={11} className="flex-shrink-0" />
+                        <span className="max-w-[140px] truncate">{citation.documentName}</span>
+                        <span className={isOpen ? "text-neutral-300" : "text-neutral-400"}>p.{citation.page}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <MessageActions turn={turn} onFeedback={onFeedback} />
+          </>
         )}
-
-        <MessageActions turn={turn} onFeedback={onFeedback} />
       </div>
     </div>
   );
 }
-
-function TypingIndicator() {
-  return (
-    <div className="mx-auto max-w-3xl px-4 py-3 sm:px-6">
-      <div className="flex items-center gap-1 py-1.5">
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-neutral-300 [animation-delay:-0.3s]" />
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-neutral-300 [animation-delay:-0.15s]" />
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-neutral-300" />
-      </div>
-    </div>
-  );
-}
-
 
 function EmptyStateGreeting() {
   return (
@@ -504,7 +505,7 @@ function NoDepartmentNotice() {
   );
 }
 
-/** Top bar: mobile menu toggle + session title + department scope */
+
 function ConversationHeader({
   title,
   departments,
@@ -614,6 +615,7 @@ function Composer({ draft, onDraftChange, onSubmit, isPending, disabled, textare
   );
 }
 
+
 function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const activeSessionId = useChatUiStore((s) => s.activeSessionId);
   const setActiveSessionId = useChatUiStore((s) => s.setActiveSessionId);
@@ -633,10 +635,6 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
   const conversations = sessionQuery.data?.conversations ?? [];
 
-  // Auto-create a fresh session the moment the person lands on the
-  // chat page — but only once they're confirmed to be in a
-  // department, so a person waiting on department access doesn't
-  // accumulate empty sessions every time they reload this page.
   useEffect(() => {
     if (hasAutoCreated.current) return;
     if (!hasDepartment) return;
@@ -683,7 +681,7 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         onOpenSidebar={onOpenSidebar}
       />
 
-      {/* This is the only scrollable region in the whole panel */}
+   
       <div className="min-h-0 flex-1 overflow-y-auto">
         {departmentsQuery.isLoading ? (
           <div className="flex h-full items-center justify-center">
@@ -715,21 +713,12 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
               <ConversationTurnView key={turn.id} turn={turn} onFeedback={handleFeedback} />
             ))}
 
-            {sendMessageMutation.isPending && <TypingIndicator />}
-            {sendMessageMutation.isError && (
-              <div className="mx-auto max-w-3xl px-4 sm:px-6">
-                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {sendMessageMutation.error?.message ?? "Couldn't send that message."}
-                </p>
-              </div>
-            )}
-
             <div ref={scrollAnchorRef} />
           </div>
         )}
       </div>
 
-      {/* Always docked at the bottom — empty state included */}
+     
       <Composer
         draft={draft}
         onDraftChange={setDraft}
@@ -742,15 +731,6 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   );
 }
 
-/**
- * ⚠️ Unconfirmed: PDF bbox coordinates can use either a top-left
- * origin (y grows downward — common output from pdfplumber/PyMuPDF
- * text-extraction in "top-left" mode) or the native PDF coordinate
- * space (bottom-left origin, y grows upward). Getting this wrong
- * flips the highlight vertically. Defaulting to "top-left"; open a
- * citation with a real bbox and flip this if the highlight lands on
- * the mirrored position on the page.
- */
 const BBOX_ORIGIN: "top-left" | "bottom-left" = "top-left";
 
 function PdfLoadingState() {
@@ -776,12 +756,7 @@ interface PdfPageViewProps {
   bbox: number[] | null;
 }
 
-/**
- * Renders a single PDF page onto a canvas (via react-pdf/pdfjs) with
- * a highlight box drawn over the cited bbox, plus prev/next controls
- * so the person can scroll through nearby pages for context — the
- * highlight only shows on the page it actually belongs to.
- */
+
 function PdfPageView({ fileUrl, initialPage, bbox }: PdfPageViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(440);
@@ -850,7 +825,6 @@ function PdfPageView({ fileUrl, initialPage, bbox }: PdfPageViewProps) {
         </div>
       </div>
 
-  
       <div className="flex flex-shrink-0 items-center justify-between border-t border-neutral-200 bg-white px-4 py-2.5">
         <button
           type="button"
@@ -877,6 +851,7 @@ function PdfPageView({ fileUrl, initialPage, bbox }: PdfPageViewProps) {
     </div>
   );
 }
+
 
 function CitationDrawer() {
   const activeCitation = useChatUiStore((s) => s.activeCitation);
@@ -930,8 +905,7 @@ function CitationDrawer() {
           </div>
         </div>
 
-        {/* Hidden when there's no excerpt — the backend doesn't return
-            one for every citation, and an empty quoted block looks broken. */}
+       
         {activeCitation.snippet && (
           <div className="flex-shrink-0 border-b border-neutral-100 bg-neutral-50/60 px-4 py-3.5">
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
@@ -941,8 +915,7 @@ function CitationDrawer() {
           </div>
         )}
 
-        {/* Real PDF rendering (react-pdf/pdfjs) — jumps straight to the
-            cited page and draws the bbox highlight on top */}
+
         <div className="min-h-0 flex-1">
           <PdfPageView
             key={activeCitation.id}

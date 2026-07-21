@@ -17,7 +17,7 @@ from src.tools.tool import (
     expand_summary,
 )
 from src.citations.resolver import resolve_citations
-
+from src.cache.cache import check_cache,store_cache
 ## initialize the memory manager
 memory_manager = MemoryManager()
 
@@ -72,142 +72,148 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
     print("query.......")
     print(query)
     thread_id = str(owner_id)
-    steps = []
-
-    all_retrieved_docs: list[dict] = []
-
-    # Build context from memory
-    print("\n" + "=" * 50)
-    print("BUILDING CONTEXT...")
-
-    async with asyncio.TaskGroup() as load_context:
-        t1 = load_context.create_task(
-            memory_manager.read_conversational_memory(thread_id, tenant_id, owner_id, session_id)
-        )
-        t2 = load_context.create_task(memory_manager.read_workflow(query, tenant_id))
-        t3 = load_context.create_task(memory_manager.read_entity(query, tenant_id))
-        t4 = load_context.create_task(
-            memory_manager.read_summary_context(query, thread_id=thread_id)
-        )
-
-    memory_context = (
-        f"{t1.result()}\n\n{t2.result()}\n\n{t3.result()}\n\n{t4.result()}\n"
-    )
-
-    usage = await calculate_context_usage(memory_context)
-    if usage["percent"] > 80:
-        memory_context, summaries = await offload_to_summary(
-            memory_context,
-            memory_manager,
-            thread_id=thread_id,
-        )
-        usage = await calculate_context_usage(memory_context)
-
-    context = f"# Question\n{query}\n\n Department IDS{department_id}\n\n #Tenant ID{tenant_id}\n\n{memory_context} \n Department Name: {departments}\n current userName: {user_details}"
-
-    dynamic_tools = await memory_manager.read_toolbox(query, k=6)
-    print("Tools:")
-
-    async with asyncio.TaskGroup() as store_msg_enti:
-        store_msg_enti.create_task(memory_manager.write_conversational_memory(
-                query, "user", thread_id, tenant_id, owner_id, session_id,{}
-            )
-        )
-
-    messages = [context]
-    final_answer = ""
-
-    for iteration in range(max_iterations):
-
-        response = await call_gemini_chat(messages, tools=dynamic_tools)
-        msg = response
-        if msg.candidates[0].content.parts[0].function_call:
-
-            function_call = msg.candidates[0].content.parts[0].function_call
-            messages.append(msg.candidates[0].content)
-
-            tool_name = function_call.name
-            tool_args = function_call.args
-            args_display = {
-                k: (v[:50] + "..." if isinstance(v, str) and len(v) > 50 else v)
-                for k, v in tool_args.items()
-            }
-            print(f"{tool_name}")
-        
-
-            try:
-                result = await execute_tool(
-                    tool_name, tool_args, current_thread_id=thread_id
-                )
-                status = "success"
-                error_message = None
-                steps.append(f"{tool_name}({args_display}) → success")
-            except Exception as e:
-                result = f"Error: {e}"
-                status = "failed"
-                error_message = str(e)
-                steps.append(f"{tool_name}({args_display}) → failed")
-
-            # Capture citation-eligible documents from the FULL, untruncated
-            if tool_name == KNOWLEDGE_BASE_TOOL_NAME and status == "success":
-                try:
-                    parsed = json_lib.loads(result)
-                    
-                    all_retrieved_docs.extend(parsed.get("documents", []))
-                except (json_lib.JSONDecodeError, AttributeError):
-                    print(f"warning: could not parse {tool_name} result for citations")
-
-            log_id = await memory_manager.write_tool_log(
-                thread_id=thread_id,
-                tool_call_id=function_call.id,
-                tool_name=tool_name,
-                tool_args=tool_args,
-                result=result,
-                status=status,
-                error_message=error_message,
-                metadata={"iteration": iteration + 1},)
-
-            print(f"tool result: {result}")
-            
-            
-            if len(result) > 3000:
-                result_for_llm = (result[:3000]+ f"\n\n[Truncated for context. Full output saved in TOOL_LOG_MEMORY as log_id: {log_id}]")
-            else:
-                result_for_llm = result
-            result_display = (result_for_llm[:200] + "..."
-                if len(result_for_llm) > 200
-                else result_for_llm)
-            function_response_part = types.Part.from_function_response(
-                name=tool_name,
-                response={"result": result_for_llm},)
-            messages.append(types.Content(role="tool", parts=[function_response_part]))
-        else:
-            final_answer = msg.text or ""
-            if not final_answer:
-                candidate = msg.candidates[0]
-                
-            break
+    if results := await check_cache(query,thread_id,owner_id,tenant_id,session_id):
+        final_answer = results
+        return final_answer
     else:
-       
-        final_answer = (
-            "I wasn't able to finish processing your request in time. "
-            "Could you try rephrasing your question, or asking something more specific?"
+        steps = []
+
+        all_retrieved_docs: list[dict] = []
+
+        # Build context from memory
+        print("\n" + "=" * 50)
+        print("BUILDING CONTEXT...")
+
+        async with asyncio.TaskGroup() as load_context:
+            t1 = load_context.create_task(
+                memory_manager.read_conversational_memory(thread_id, tenant_id, owner_id, session_id)
+            )
+            t2 = load_context.create_task(memory_manager.read_workflow(query, tenant_id))
+            t3 = load_context.create_task(memory_manager.read_entity(query, tenant_id))
+            t4 = load_context.create_task(
+                memory_manager.read_summary_context(query, thread_id=thread_id)
+            )
+
+        memory_context = (
+            f"{t1.result()}\n\n{t2.result()}\n\n{t3.result()}\n\n{t4.result()}\n"
         )
 
-    if steps:
-        async with asyncio.TaskGroup() as save_wrk_flow_enti:
-            save_wrk_flow_enti.create_task(memory_manager.write_workflow(query, tenant_id, department_id, steps, final_answer))
+        usage = await calculate_context_usage(memory_context)
+        if usage["percent"] > 80:
+            memory_context, summaries = await offload_to_summary(
+                memory_context,
+                memory_manager,
+                thread_id=thread_id,
+            )
+            usage = await calculate_context_usage(memory_context)
 
-    resolved = resolve_citations(final_answer, all_retrieved_docs)
+        context = f"# Question\n{query}\n\n Department IDS{department_id}\n\n #Tenant ID{tenant_id}\n\n{memory_context} \n Department Name: {departments}\n current userName: {user_details}"
 
-    await memory_manager.write_conversational_memory(
-        final_answer,
-        "assistant",
-        thread_id,
-        tenant_id,
-        owner_id,
-        session_id,
-        metadata={"citations": resolved["citations"]},
-    )
+        dynamic_tools = await memory_manager.read_toolbox(query, k=6)
+        print("Tools:")
 
-    return resolved
+        async with asyncio.TaskGroup() as store_msg_enti:
+            store_msg_enti.create_task(memory_manager.write_conversational_memory(
+                    query, "user", thread_id, tenant_id, owner_id, session_id,{}
+                )
+            )
+
+        messages = [context]
+        final_answer = ""
+
+        for iteration in range(max_iterations):
+
+            response = await call_gemini_chat(messages, tools=dynamic_tools)
+            msg = response
+            if msg.candidates[0].content.parts[0].function_call:
+
+                function_call = msg.candidates[0].content.parts[0].function_call
+                messages.append(msg.candidates[0].content)
+
+                tool_name = function_call.name
+                tool_args = function_call.args
+                args_display = {
+                    k: (v[:50] + "..." if isinstance(v, str) and len(v) > 50 else v)
+                    for k, v in tool_args.items()
+                }
+                print(f"{tool_name}")
+            
+
+                try:
+                    result = await execute_tool(
+                        tool_name, tool_args, current_thread_id=thread_id
+                    )
+                    status = "success"
+                    error_message = None
+                    steps.append(f"{tool_name}({args_display}) → success")
+                except Exception as e:
+                    result = f"Error: {e}"
+                    status = "failed"
+                    error_message = str(e)
+                    steps.append(f"{tool_name}({args_display}) → failed")
+
+                # Capture citation-eligible documents from the FULL, untruncated
+                if tool_name == KNOWLEDGE_BASE_TOOL_NAME and status == "success":
+                    try:
+                        parsed = json_lib.loads(result)
+                        
+                        all_retrieved_docs.extend(parsed.get("documents", []))
+                    except (json_lib.JSONDecodeError, AttributeError):
+                        print(f"warning: could not parse {tool_name} result for citations")
+
+                log_id = await memory_manager.write_tool_log(
+                    thread_id=thread_id,
+                    tool_call_id=function_call.id,
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                    result=result,
+                    status=status,
+                    error_message=error_message,
+                    metadata={"iteration": iteration + 1},)
+
+                print(f"tool result: {result}")
+                
+                
+                if len(result) > 3000:
+                    result_for_llm = (result[:3000]+ f"\n\n[Truncated for context. Full output saved in TOOL_LOG_MEMORY as log_id: {log_id}]")
+                else:
+                    result_for_llm = result
+                result_display = (result_for_llm[:200] + "..."
+                    if len(result_for_llm) > 200
+                    else result_for_llm)
+                function_response_part = types.Part.from_function_response(
+                    name=tool_name,
+                    response={"result": result_for_llm},)
+                messages.append(types.Content(role="tool", parts=[function_response_part]))
+            else:
+                final_answer = msg.text or ""
+                if not final_answer:
+                    candidate = msg.candidates[0]
+                    
+                break
+        else:
+        
+            final_answer = (
+                "I wasn't able to finish processing your request in time. "
+                "Could you try rephrasing your question, or asking something more specific?"
+            )
+
+        if steps:
+            async with asyncio.TaskGroup() as save_wrk_flow_enti:
+                save_wrk_flow_enti.create_task(memory_manager.write_workflow(query, tenant_id, department_id, steps, final_answer))
+
+        resolved = resolve_citations(final_answer, all_retrieved_docs)
+        
+        # save data to cache
+        await  store_cache(user_query,thread_id,final_answer,owner_id,tenant_id,session_id,{"citations": resolved["citations"]})
+        await memory_manager.write_conversational_memory(
+            final_answer,
+            "assistant",
+            thread_id,
+            tenant_id,
+            owner_id,
+            session_id,
+            metadata={"citations": resolved["citations"]},
+        )
+
+        return resolved
