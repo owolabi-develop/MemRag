@@ -22,7 +22,8 @@ mem_cache = SemanticCache(
 
 
 async def store_cache(prompt:str,thread_id:str,response:str,user_id:uuid.UUID,tenant_id:uuid.UUID,session_id:uuid.UUID,metadata:dict,ttl:int=60):
-    await mem_cache.astore(
+    print("saving to cache")
+    mem_cache.store(
         prompt=prompt,
         response=response,
         ttl=ttl,
@@ -31,19 +32,20 @@ async def store_cache(prompt:str,thread_id:str,response:str,user_id:uuid.UUID,te
                "thread_id":thread_id,
                  "session_id":str(session_id)}   
     )
+    print("saved to cache")
     
 
 async def check_cache(prompt:str,thread_id:str,user_id:uuid.UUID,tenant_id:uuid.UUID,session_id:uuid.UUID):
-    mem_cache.set_threshold(0.3)
+    print("checking ... cache..")
+    mem_cache.set_threshold(0.48)
     tenant_filter = Tag("tenant_id") == str(tenant_id)
     user_filter = Tag("user_id") == str(user_id)
     thread = Tag("thread_id") == thread_id
     session = Tag("session_id") == str(session_id)
     combine_filter = tenant_filter & user_filter & thread & session
    
-    response =await mem_cache.acheck(prompt=prompt,
+    response = mem_cache.check(prompt=prompt,
                                 filter_expression=combine_filter,
-                                num_results=5,
                                  return_fields=["response","metadata"])
     print(f'found {len(response)} entry')
     return response

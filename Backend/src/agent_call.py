@@ -73,7 +73,8 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
     print(query)
     thread_id = str(owner_id)
     if results := await check_cache(query,thread_id,owner_id,tenant_id,session_id):
-        final_answer = results
+        response = {"answer":results[0]['response'],"citations":results[0]['metadata']['citations']}
+        final_answer = response
         return final_answer
     else:
         steps = []
