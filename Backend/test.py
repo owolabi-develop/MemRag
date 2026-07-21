@@ -1,16 +1,40 @@
-import asyncio
-import uuid
-from src.retrieval.retriever import hybrid_search_retriever
-from src.llm.query_transformation import query_rewrite_expand
-from pprint import pprint
-from src.agent_call import call_agent
-from src.memory.memory_manager import MemoryManager
+import os
+import getpass
+import time
+import numpy as np
 from src.llm.llm_client import client
+import asyncio
+import warnings
+warnings.filterwarnings('ignore')
+from redisvl.extensions.cache.llm import SemanticCache
+from redisvl.utils.vectorize import HFTextVectorizer
+
+os.environ["TOKENIZERS_PARALLELISM"] = "False"
+
+llmcache = SemanticCache(
+    name="llmcache",                                        
+    redis_url=os.getenv("REDIS_CREDENTIAL"),                     
+    distance_threshold=0.1,                                  
+    vectorizer=HFTextVectorizer(device="cpu"), 
+)
+
+
+
+
+
+async def rag(query:str):
+    result = client.models.generate_content(
+        model="gemini-3.5-flash",
+        contents=query  
+    )
+    return result.text
+
 
 async def main():
     
-    res = await query_rewrite_expand("what is the total about sale make last week")   
-    print(res) 
+    
+    query="tell me about love"
+    llmcache.delete()
        
     
     
