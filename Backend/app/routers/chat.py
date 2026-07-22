@@ -7,6 +7,8 @@ from typing import Annotated
 from app.security import get_current_active_user
 from src.agent_call import call_agent
 import uuid
+from src.guardrails.guardrails import GuardrailViolation,input_guard,output_guard,PIIDetectedError,GibberishContentError,ToxicContentError,DetectJailbreakContentError
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/chat",
                    tags=['chats'])
@@ -33,9 +35,13 @@ async def chatAgent(user_query: Annotated[str, Form()],session_id: Annotated[uui
     
 
     user_dpt = await get_current_user_dpt(current_user.departments)
+    
+    try:
+        await run_in_threadpool(input_guard().validate,user_query)
+    except (PIIDetectedError,GibberishContentError,ToxicContentError) as exec:
+        raise exec
     response = await call_agent(user_query, user_dpt,user_dpt_name,current_user_details,current_user.tenant_id, current_user.id,session_id)
     
-   
     return {"response": response}
 
 @router.post("/feedback", response_model=FeedBackPublic, status_code=status.HTTP_201_CREATED)

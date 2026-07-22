@@ -8,6 +8,8 @@ import asyncio
 import uuid
 from src.connection.connections import get_db_pool
 from src.memory.memory_manager import MemoryManager
+from src.guardrails.guardrails import output_guard
+from starlette.concurrency import run_in_threadpool
 from src.tools.tool import (
     TOOL_BY_NAME,
     summarize_conversation,
@@ -202,13 +204,14 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
         if steps:
             async with asyncio.TaskGroup() as save_wrk_flow_enti:
                 save_wrk_flow_enti.create_task(memory_manager.write_workflow(query, tenant_id, department_id, steps, final_answer))
+        final = await run_in_threadpool(output_guard().validate,final_answer)
 
-        resolved = resolve_citations(final_answer, all_retrieved_docs)
+        resolved = resolve_citations(final.validated_output, all_retrieved_docs)
         
         # save data to cache
         await  store_cache(user_query,thread_id,final_answer,owner_id,tenant_id,session_id,{"citations": resolved["citations"]})
         await memory_manager.write_conversational_memory(
-            final_answer,
+            final.validated_output,
             "assistant",
             thread_id,
             tenant_id,

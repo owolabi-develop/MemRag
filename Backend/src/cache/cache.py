@@ -11,7 +11,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "False"
 mem_cache = SemanticCache(
     name="Mem-rag",                                        
     redis_url=os.getenv("REDIS_CREDENTIAL"),                     
-    distance_threshold=0.1, 
+    distance_threshold=0.35, 
     overwrite=True,                                 
     vectorizer=HFTextVectorizer(device="cpu"), 
     filterable_fields=[{"name": "tenant_id", "type": "tag"},
@@ -37,7 +37,6 @@ async def store_cache(prompt:str,thread_id:str,response:str,user_id:uuid.UUID,te
 
 async def check_cache(prompt:str,thread_id:str,user_id:uuid.UUID,tenant_id:uuid.UUID,session_id:uuid.UUID):
     print("checking ... cache..")
-    mem_cache.set_threshold(0.48)
     tenant_filter = Tag("tenant_id") == str(tenant_id)
     user_filter = Tag("user_id") == str(user_id)
     thread = Tag("thread_id") == thread_id

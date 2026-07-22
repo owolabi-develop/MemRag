@@ -8,10 +8,12 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import os
 import json
-
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from arq import create_pool, ArqRedis
 from arq.connections import RedisSettings
 from arq.jobs import Job, JobStatus, JobResult
+from src.guardrails.guardrails import GuardrailViolation
 
 
 @asynccontextmanager
@@ -50,6 +52,14 @@ app.include_router(users.router)
 app.include_router(login.router)
 app.include_router(chatsession.router)
 app.include_router(password.router)
+
+
+@app.exception_handler(GuardrailViolation)
+async def unicorn_exception_handler(request: Request, exc: GuardrailViolation):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"response":{"answer":exc.user_message,"citations":[]}},
+    )
 
 # CORS (Cross-Origin Resource Sharing) config
 origins = [
