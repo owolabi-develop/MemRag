@@ -38,7 +38,7 @@ async def chatAgent(user_query: Annotated[str, Form()],session_id: Annotated[uui
     
     try:
         await run_in_threadpool(input_guard().validate,user_query)
-    except (PIIDetectedError,GibberishContentError,ToxicContentError) as exec:
+    except (PIIDetectedError,ToxicContentError) as exec:
         raise exec
     response = await call_agent(user_query, user_dpt,user_dpt_name,current_user_details,current_user.tenant_id, current_user.id,session_id)
     

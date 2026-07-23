@@ -3,17 +3,25 @@ import warnings
 warnings.filterwarnings('ignore')
 from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.utils.vectorize import HFTextVectorizer
+from redisvl.extensions.cache.embeddings import EmbeddingsCache
 import os
 from redisvl.query.filter import Tag
 import uuid
+import redis
 os.environ["TOKENIZERS_PARALLELISM"] = "False"
 
+r = redis.Redis.from_url(os.getenv("REDIS_CREDENTIAL"), )
+cache_embed = HFTextVectorizer(
+    model="redis/langcache-embed-v1",
+    cache=EmbeddingsCache(redis_client=r, ttl=3600),
+    device="cpu")
+
 mem_cache = SemanticCache(
-    name="Mem-rag",                                        
-    redis_url=os.getenv("REDIS_CREDENTIAL"),                     
-    distance_threshold=0.35, 
-    overwrite=True,                                 
-    vectorizer=HFTextVectorizer(device="cpu"), 
+    name="mem-cache",                                        
+    redis_client=r,                     
+    distance_threshold=0.3, 
+    ttl=86400,                                
+    vectorizer=cache_embed,
     filterable_fields=[{"name": "tenant_id", "type": "tag"},
                        {"name": "user_id", "type": "tag"},
                         {"name": "thread_id", "type": "tag"},
@@ -21,16 +29,15 @@ mem_cache = SemanticCache(
 )
 
 
-async def store_cache(prompt:str,thread_id:str,response:str,user_id:uuid.UUID,tenant_id:uuid.UUID,session_id:uuid.UUID,metadata:dict,ttl:int=60):
+async def store_cache(prompt:str,thread_id:str,response:str,user_id:uuid.UUID,tenant_id:uuid.UUID,session_id:uuid.UUID,metadata:dict):
     print("saving to cache")
     mem_cache.store(
         prompt=prompt,
         response=response,
-        ttl=ttl,
+        ttl=3600,
         metadata=metadata,
         filters={"tenant_id":str(tenant_id),"user_id":str(user_id),
-               "thread_id":thread_id,
-                 "session_id":str(session_id)}   
+               "thread_id":thread_id,"session_id":str(session_id)}   
     )
     print("saved to cache")
     
