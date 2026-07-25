@@ -10,6 +10,7 @@ import { createFeedback, updateFeedback } from "../api/feedback.api";
 import { getDocumentViewUrl } from "../api/documentView.api";
 import { ApiError } from "../api/httpClient";
 import { useAuthStore } from "../store/authStore";
+import { useGeminiSettingsStore } from "../store/geminiSettingsStore";
 import type {
   ChatSessionSummary,
   Citation,
@@ -72,31 +73,20 @@ export function useCreateSessionMutation() {
   });
 }
 
-/**
- * Shared by both toConversationTurns (history, from session detail)
- * and useSendMessageMutation (a freshly-sent message) so citation
- * mapping stays identical regardless of which endpoint it came from.
- */
+
 function mapCitations(raw: RawCitation[] | undefined): Citation[] {
   return (raw ?? []).map((c, idx) => ({
     id: `${c.document_id ?? c.source}-${c.page}-${idx}`,
     documentName: c.source,
     page: c.page,
-    filePath: `/documents/${c.source}`, // placeholder until openCitation gets the real url from the view endpoint
-    snippet: "", // TODO: not provided by either endpoint
+    filePath: `/documents/${c.source}`, 
+    snippet: "",
     documentId: c.document_id ?? "",
     marker: c.marker,
     bbox: c.bbox ?? null,
   }));
 }
 
-/**
- * Pairs the backend's flat, alternating user/assistant message list
- * into the { user_query, ai_response } turns the UI actually renders.
- * feedback/feedbackId start null — there's no GET-existing-feedback
- * data on this endpoint, so history doesn't carry prior feedback
- * state; each turn starts fresh per page load.
- */
 function toConversationTurns(messages: RawMessage[]): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
 
@@ -137,18 +127,12 @@ export function useSessionQuery(sessionId: string | null) {
   });
 }
 
-/**
- * POST /chat/ (form-urlencoded: user_query + session_id). On success,
- * appends the new turn straight into the session query cache — no
- * refetch, shows up instantly. No message id comes back from this
- * endpoint, so the turn's id is client-generated; if you reload the
- * page, the session-detail refetch will replace it with the server's
- * real ids for that same exchange, so this is only a transient id
- * for the current tab session, not something to rely on elsewhere.
- */
+
 export function useSendMessageMutation(sessionId: string | null) {
   const queryClient = useQueryClient();
   const accessToken = useAuthStore((s) => s.accessToken);
+  const apiKey = useGeminiSettingsStore((s) => s.apiKey);
+  const model = useGeminiSettingsStore((s) => s.model);
 
   return useMutation<
     { answer: string; citations: Citation[] },
@@ -160,16 +144,12 @@ export function useSendMessageMutation(sessionId: string | null) {
       if (!accessToken) throw new ApiError(401, "Not authenticated");
       if (!sessionId) throw new ApiError(400, "No session selected");
 
-      const data = await sendMessage(sessionId, userQuery, accessToken);
+      const data = await sendMessage(sessionId, userQuery,model,apiKey, accessToken);
       return {
         answer: data.response.answer,
         citations: mapCitations(data.response.citations),
       };
     },
-    // Show the user's own message the instant they hit send — don't
-    // wait for the response to render anything. ai_response starts
-    // empty; ConversationTurnView renders typing dots in that exact
-    // spot for any turn whose ai_response is still "".
     onMutate: async (userQuery) => {
       const tempId = crypto.randomUUID();
 
@@ -190,9 +170,6 @@ export function useSendMessageMutation(sessionId: string | null) {
       return { tempId };
     },
     onSuccess: (result, _userQuery, context) => {
-      // Fill in the same turn that onMutate created — same id, so
-      // this replaces the typing dots with the real answer instead
-      // of appending a second entry.
       queryClient.setQueryData<SessionQueryData | undefined>(sessionQueryKey(sessionId), (old) => {
         if (!old) return old;
         return {
@@ -203,43 +180,22 @@ export function useSendMessageMutation(sessionId: string | null) {
         };
       });
 
-      // The backend can rename a session (e.g. "new" -> a generated
-      // title) once it's seen the first exchange. The sessions list
-      // isn't touched by the optimistic update above, so without
-      // this it stays showing the stale title until something else
-      // happens to refetch it (a full page reload). Invalidating
-      // here — rather than setQueryData — triggers a silent
-      // background refetch: the sidebar keeps showing the current
-      // title until the fresh one arrives, no flicker either way.
       queryClient.invalidateQueries({ queryKey: sessionQueryKey(sessionId) });
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
     },
-    onError: (err, _userQuery, context) => {
-      // Leave the user's message visible rather than making it
-      // vanish — replace the typing dots with an inline error
-      // instead of a detached banner elsewhere on the page.
+    onError: (_err, _userQuery, context) => {
+  
       queryClient.setQueryData<SessionQueryData | undefined>(sessionQueryKey(sessionId), (old) => {
         if (!old) return old;
         return {
           ...old,
-          conversations: old.conversations.map((t) =>
-            t.id === context?.tempId
-              ? { ...t, ai_response: err.message || "Couldn't get a response. Please try again." }
-              : t
-          ),
+          conversations: old.conversations.filter((t) => t.id !== context?.tempId),
         };
       });
     },
   });
 }
 
-/**
- * First feedback on a turn -> POST /chat/feedback (creates a record,
- * response includes the id). Changing it afterward -> PATCH
- * /chat/feedback/{id}. Which one fires is decided by whether the
- * turn already has a feedbackId, which onSuccess writes into the
- * session query cache directly (no refetch needed).
- */
 export function useFeedbackMutation(sessionId: string | null) {
   const queryClient = useQueryClient();
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -284,10 +240,6 @@ export function useFeedbackMutation(sessionId: string | null) {
   });
 }
 
-/**
- * Fetches the real viewable URL for a citation's source document,
- * keyed by the citation's document_id.
- */
 export function useDocumentViewMutation() {
   const accessToken = useAuthStore((s) => s.accessToken);
 

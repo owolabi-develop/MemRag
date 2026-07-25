@@ -4,11 +4,9 @@ import { useNavigate } from "react-router";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
-// react-pdf needs a worker script — pointed at a CDN matching the
-// installed pdfjs-dist version rather than fighting Vite's bundler
-// over worker asset paths. Fine for now; self-host later if you'd
-// rather not depend on unpkg in production.
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 import {
   Plus,
@@ -50,7 +48,6 @@ function getInitials(name: string) {
   return name.slice(0, 2).toUpperCase();
 }
 
-
 function formatRelativeTime(dateString: string | null) {
   if (!dateString) return "Recent";
   const diffMs = Date.now() - new Date(dateString).getTime();
@@ -81,13 +78,6 @@ function SessionListSkeleton() {
   );
 }
 
-/**
- * Left panel — light navigation rail with the Groundly wordmark,
- * plain-text nav rows, account footer with a working "back to
- * dashboard" and "log out". Fixed-width, full-height, static on
- * md+; a slide-over drawer with its own in-panel collapse icon on
- * small screens.
- */
 function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const sessionsQuery = useSessionsQuery();
   const createSessionMutation = useCreateSessionMutation();
@@ -363,8 +353,6 @@ function renderAnswerWithCitations(
           {number}
         </button>
       );
-    } else {
-    
     }
 
     lastIndex = markerRegex.lastIndex;
@@ -486,7 +474,6 @@ function EmptyStateGreeting() {
   );
 }
 
-
 function NoDepartmentNotice() {
   return (
     <div className="flex h-full min-h-[60vh] flex-col items-center justify-center px-4 text-center sm:px-6">
@@ -497,14 +484,11 @@ function NoDepartmentNotice() {
         You're not in a department yet
       </h2>
       <p className="mx-auto mt-1.5 max-w-sm text-sm text-neutral-500">
-        Chatting is scoped to your department's documents, so you'll need to be added to one
-        first. Once a workspace admin adds you, you can start asking questions here — no
-        further action needed on your part.
+        Chatting is scoped to your department's documents, so you'll need to be added to one first. Once a workspace admin adds you, you can start asking questions here no further action needed on your part.
       </p>
     </div>
   );
 }
-
 
 function ConversationHeader({
   title,
@@ -615,7 +599,6 @@ function Composer({ draft, onDraftChange, onSubmit, isPending, disabled, textare
   );
 }
 
-
 function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const activeSessionId = useChatUiStore((s) => s.activeSessionId);
   const setActiveSessionId = useChatUiStore((s) => s.setActiveSessionId);
@@ -663,11 +646,37 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       setActiveSessionId(sessionId);
     }
 
-    sendMessageMutation.mutate(query);
+    sendMessageMutation.mutate(query, {
+      onError: (error) => {
+        setDraft(query);
+        toast.error(
+          <div>
+            <p className="font-semibold">Request failed</p>
+            <p className="text-sm opacity-90">
+              {error.message || "Something went wrong while getting a response."}
+            </p>
+          </div>,
+          { autoClose: 6000 }
+        );
+      },
+    });
   }
 
   function handleFeedback(turn: ConversationTurn, thumb: "up" | "down") {
-    feedbackMutation.mutate({ turn, thumb });
+    feedbackMutation.mutate(
+      { turn, thumb },
+      {
+        onError: (error) => {
+          toast.error(
+            <div>
+              <p className="font-semibold">Feedback failed</p>
+              <p className="text-sm opacity-90">{error.message || "Couldn't save your feedback."}</p>
+            </div>,
+            { autoClose: 5000 }
+          );
+        },
+      }
+    );
   }
 
   const isSettingUpSession = hasDepartment && !activeSessionId;
@@ -681,7 +690,6 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         onOpenSidebar={onOpenSidebar}
       />
 
-   
       <div className="min-h-0 flex-1 overflow-y-auto">
         {departmentsQuery.isLoading ? (
           <div className="flex h-full items-center justify-center">
@@ -718,7 +726,6 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         )}
       </div>
 
-     
       <Composer
         draft={draft}
         onDraftChange={setDraft}
@@ -755,7 +762,6 @@ interface PdfPageViewProps {
   initialPage: number;
   bbox: number[] | null;
 }
-
 
 function PdfPageView({ fileUrl, initialPage, bbox }: PdfPageViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -852,7 +858,6 @@ function PdfPageView({ fileUrl, initialPage, bbox }: PdfPageViewProps) {
   );
 }
 
-
 function CitationDrawer() {
   const activeCitation = useChatUiStore((s) => s.activeCitation);
   const closeCitation = useChatUiStore((s) => s.closeCitation);
@@ -905,7 +910,6 @@ function CitationDrawer() {
           </div>
         </div>
 
-       
         {activeCitation.snippet && (
           <div className="flex-shrink-0 border-b border-neutral-100 bg-neutral-50/60 px-4 py-3.5">
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
@@ -914,7 +918,6 @@ function CitationDrawer() {
             <p className="text-sm italic leading-relaxed text-neutral-700">&ldquo;{activeCitation.snippet}&rdquo;</p>
           </div>
         )}
-
 
         <div className="min-h-0 flex-1">
           <PdfPageView
@@ -937,6 +940,7 @@ export default function ChatComponent() {
       <ChatSessionList isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
       <ConversationView onOpenSidebar={() => setIsSidebarOpen(true)} />
       <CitationDrawer />
+      <ToastContainer position="top-right" />
     </div>
   );
 }

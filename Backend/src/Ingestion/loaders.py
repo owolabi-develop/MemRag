@@ -10,9 +10,10 @@ from app.db import async_session_pool
 from app.models import Document,DocumentStatus,Department
 from app.utils.s3_storage import  build_object_key, upload_file_to_s3, SPACES_BUCKET_NAME
 from fastapi import Depends, HTTPException,status
-
+from app.metrics.metrics import document_upload_duration
 import random
 random.seed(42)
+import time
 
 def _make_doc_id(content: bytes) -> str:
     """Content hash -> stable id across re-uploads/renames of the same file."""
@@ -72,6 +73,8 @@ async def load_document(ctx:dict, filename,content_type,file_byte:bytes,departme
     
     document_id = ""
     
+    # track document upload
+    start_time = time.perf_counter()
     
     # handle s3 upload and open section
     # open db section
@@ -194,6 +197,9 @@ async def load_document(ctx:dict, filename,content_type,file_byte:bytes,departme
                 _chunk["metadata"],
                 emb,
             )
+            
+    end_time = time.perf_counter()
+    document_upload_duration.observe(end_time - start_time)
 
     print(f"all {filename} documents ingested to {department_name} successfully")
     

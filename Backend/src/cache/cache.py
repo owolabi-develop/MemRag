@@ -16,20 +16,20 @@ cache_embed = HFTextVectorizer(
     cache=EmbeddingsCache(redis_client=r, ttl=3600),
     device="cpu")
 
+
 mem_cache = SemanticCache(
     name="mem-cache",                                        
     redis_client=r,                     
     distance_threshold=0.3, 
-    ttl=86400,                                
+    ttl=86400,                             
     vectorizer=cache_embed,
     filterable_fields=[{"name": "tenant_id", "type": "tag"},
                        {"name": "user_id", "type": "tag"},
-                        {"name": "thread_id", "type": "tag"},
-                         {"name": "session_id", "type": "tag"}]
+                        {"name": "thread_id", "type": "tag"}]
 )
 
 
-async def store_cache(prompt:str,thread_id:str,response:str,user_id:uuid.UUID,tenant_id:uuid.UUID,session_id:uuid.UUID,metadata:dict):
+async def store_cache(prompt:str,thread_id:str,response:str,user_id:uuid.UUID,tenant_id:uuid.UUID,metadata:dict):
     print("saving to cache")
     mem_cache.store(
         prompt=prompt,
@@ -37,18 +37,17 @@ async def store_cache(prompt:str,thread_id:str,response:str,user_id:uuid.UUID,te
         ttl=3600,
         metadata=metadata,
         filters={"tenant_id":str(tenant_id),"user_id":str(user_id),
-               "thread_id":thread_id,"session_id":str(session_id)}   
+               "thread_id":thread_id}   
     )
     print("saved to cache")
     
 
-async def check_cache(prompt:str,thread_id:str,user_id:uuid.UUID,tenant_id:uuid.UUID,session_id:uuid.UUID):
+async def check_cache(prompt:str,thread_id:str,user_id:uuid.UUID,tenant_id:uuid.UUID):
     print("checking ... cache..")
     tenant_filter = Tag("tenant_id") == str(tenant_id)
     user_filter = Tag("user_id") == str(user_id)
     thread = Tag("thread_id") == thread_id
-    session = Tag("session_id") == str(session_id)
-    combine_filter = tenant_filter & user_filter & thread & session
+    combine_filter = tenant_filter & user_filter & thread
    
     response = mem_cache.check(prompt=prompt,
                                 filter_expression=combine_filter,

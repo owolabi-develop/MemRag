@@ -19,6 +19,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "llmlingua>=0.2.2",
     "pgvector>=0.4.2",
+    "prometheus-fastapi-instrumentator>=8.0.2",
     "pwdlib[argon2]>=0.3.0",
     "pyjwt>=2.13.0",
     "pymupdf4llm>=1.27.2.3",

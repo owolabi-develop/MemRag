@@ -1,11 +1,14 @@
-from src.llm.llm_client import client
 from google.genai import types
+import time
 from src.llm.query_transformation import query_rewrite_expand
 from src.utils.helper import calculate_context_usage, offload_to_summary
 import json as json_lib
 from src.prompts.prompts import AGENT_SYSTEM_PROMPT
 import asyncio
 import uuid
+from google import genai
+from google.genai import errors
+from src.exceptions.llm_except import LLMError,LLMRateLimitError,AuthenticationError,ResourceExhausted,InvalidArgumentError,UnavailableError
 from src.connection.connections import get_db_pool
 from src.memory.memory_manager import MemoryManager
 from src.guardrails.guardrails import output_guard
@@ -20,6 +23,12 @@ from src.tools.tool import (
 )
 from src.citations.resolver import resolve_citations
 from src.cache.cache import check_cache,store_cache
+from app.metrics.metrics import (cache_hit,cache_misses,
+                                 total_tool_calls,tool_duration,agent_response_duration,
+                                 agent_number_of_interations,
+                                 agent_fail_response,
+                                 tool_failures,completion_tokens,completion_tokens_total,total_tokens_count,
+                                 model_prompt_tokens_count,tool_used_prompt_tokens_count)
 ## initialize the memory manager
 memory_manager = MemoryManager()
 
@@ -43,41 +52,70 @@ async def execute_tool(
         and current_thread_id is not None
     ):
         args["thread_id"] = str(current_thread_id)
-
     return await TOOL_BY_NAME[tool_name](**args) or "Done"
 
 
-async def call_gemini_chat(messages: list, tools: list = None, model: str = "gemini-3.5-flash"
+async def call_gemini_chat(messages: list, tools: list = None, model: str = None,model_api_key: str = None
 ):
     """Call Gemini Chat generation API with tools."""
-    config = types.GenerateContentConfig(
-        system_instruction=AGENT_SYSTEM_PROMPT,
-        tools=[types.Tool(function_declarations=tools)]
-        if tools else None
-    )
-    res = client.models.generate_content(
-            model=model, config=config, contents=messages
+    try:
+        client = genai.Client(api_key=model_api_key)
+        config = types.GenerateContentConfig(
+            system_instruction=AGENT_SYSTEM_PROMPT,
+            tools=[types.Tool(function_declarations=tools)]
+            if tools else None
         )
-    return res
+        res = await client.aio.models.generate_content(
+                model=model, config=config, contents=messages
+            )
+     
+        ## track llm token usage
+        # tool_used_prompt_tokens_count.inc(res.usage_metadata.tool_use_prompt_token_count)
+        model_prompt_tokens_count.inc(res.usage_metadata.prompt_token_count)
+        total_tokens_count.inc(res.usage_metadata.total_token_count)
+        completion_tokens.observe(res.usage_metadata.candidates_token_count)
+        completion_tokens_total.inc(res.usage_metadata.candidates_token_count)
+        return res
+    except (errors.APIError,errors.ClientError,errors.ServerError) as e:
+        print(f"{e} error ocure on chat")
+        if isinstance(e,errors.ClientError) and e.code == 429:
+            raise ResourceExhausted() from e
+        elif isinstance(e,errors.ClientError) and e.code == 400:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 401:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 403:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 404:
+            raise InvalidArgumentError() from e
+        
+        elif isinstance(e,errors.ServerError) and e.code == 503:
+            raise UnavailableError() from e
+    
 
 
 async def call_agent(user_query: str, department_id: list[uuid.UUID],
     departments: list[str],user_details: str, tenant_id: uuid.UUID,
-    owner_id: uuid.UUID,session_id: uuid.UUID,max_iterations: int = 10) -> dict:
+    owner_id: uuid.UUID,session_id: uuid.UUID,model: str,model_api_key: str) -> dict:
     """Agent loop with context window monitoring and summarization.
 
-    Returns {"answer": str, "citations": list[dict]} instead of a bare
-    string, so callers can render inline markers and a source panel.
     """
-
+    max_iterations = 10
+    # keep track of agent response time
+    start = time.perf_counter()
     
     thread_id = str(owner_id)
-    if results := await check_cache(user_query,thread_id,owner_id,tenant_id,session_id):
+    if results := await check_cache(user_query,thread_id,owner_id,tenant_id):
         response = {"answer":results[0]['response'],"citations":results[0]['metadata']['citations']}
         final_answer = response
+         ## track cache hit
+        cache_hit.inc()
         return final_answer
     else:
-        query = await query_rewrite_expand(user_query) 
+        ## track cache miss
+        cache_misses.inc()
+        
+        query = await query_rewrite_expand(user_query,model,model_api_key) 
         print("query.......")
         print(query)
         steps = []
@@ -127,7 +165,7 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
 
         for iteration in range(max_iterations):
 
-            response = await call_gemini_chat(messages, tools=dynamic_tools)
+            response = await call_gemini_chat(messages, tools=dynamic_tools,model=model,model_api_key=model_api_key)
             msg = response
             if msg.candidates[0].content.parts[0].function_call:
 
@@ -141,21 +179,24 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
                     for k, v in tool_args.items()
                 }
                 print(f"{tool_name}")
+                
+                total_tool_calls.labels(tool_name=tool_name).inc()
             
-
                 try:
+                    start_tool_exc = time.perf_counter()
                     result = await execute_tool(
                         tool_name, tool_args, current_thread_id=thread_id
                     )
                     status = "success"
                     error_message = None
                     steps.append(f"{tool_name}({args_display}) → success")
+                    tool_duration.labels(tool_name=tool_name,status=status).observe(time.perf_counter() - start_tool_exc)
                 except Exception as e:
                     result = f"Error: {e}"
                     status = "failed"
                     error_message = str(e)
                     steps.append(f"{tool_name}({args_display}) → failed")
-
+                    tool_failures.labels(tool_name=tool_name,status=status).inc()
                 # Capture citation-eligible documents from the FULL, untruncated
                 if tool_name == KNOWLEDGE_BASE_TOOL_NAME and status == "success":
                     try:
@@ -188,19 +229,24 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
                 function_response_part = types.Part.from_function_response(
                     name=tool_name,
                     response={"result": result_for_llm},)
-                messages.append(types.Content(role="tool", parts=[function_response_part]))
+                messages.append(types.Content(role="user", parts=[function_response_part]))
             else:
                 final_answer = msg.text or ""
                 if not final_answer:
                     candidate = msg.candidates[0]
                     
                 break
+            
+            ## track mask agent interation
+            agent_number_of_interations.inc()
+            
         else:
         
             final_answer = (
                 "I wasn't able to finish processing your request in time. "
                 "Could you try rephrasing your question, or asking something more specific?"
             )
+            agent_fail_response.inc()
 
         if steps:
             async with asyncio.TaskGroup() as save_wrk_flow_enti:
@@ -210,7 +256,12 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
         resolved = resolve_citations(final.validated_output, all_retrieved_docs)
         
         # save data to cache
-        await  store_cache(user_query,thread_id,final_answer,owner_id,tenant_id,session_id,{"citations": resolved["citations"]})
+        await  store_cache(user_query,thread_id,final_answer,owner_id,tenant_id,{"citations": resolved["citations"]})
+        
+        # track agent response time
+        
+        agent_response_duration.observe(time.perf_counter() - start)
+        
         await memory_manager.write_conversational_memory(
             final.validated_output,
             "assistant",

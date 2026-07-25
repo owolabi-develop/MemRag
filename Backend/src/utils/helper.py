@@ -2,9 +2,17 @@ import uuid
 MODEL_TOKEN_LIMITS = {
     "gemini-3.5-flash": 256000,
 }
-from src.llm.llm_client import client
 from src.connection.connections import get_db_pool
 from src.memory.memory_manager import MemoryManager
+from google.genai import errors
+from src.exceptions.llm_except import LLMError,LLMRateLimitError,AuthenticationError,ResourceExhausted,InvalidArgumentError,UnavailableError
+from google import genai
+import os
+from contextvars import ContextVar
+
+context_api_key : ContextVar[str] = ContextVar('api_key', default="")
+
+
 memory_manager = MemoryManager()
 # Context window calculator - returns percentage used
 async def calculate_context_usage(context: str, model: str = "gemini-3.5-flash") -> dict:
@@ -18,87 +26,106 @@ async def calculate_context_usage(context: str, model: str = "gemini-3.5-flash")
 
 
 async def summarise_context_window(content: str, memory_manager,model: str = "gemini-3.5-flash") -> dict:
+    
     """
     Summarise content using an LLM and store in summary memory.
     """
-    cleaned = (content or "").strip()
-    if not cleaned:
-        return {"status": "nothing_to_summarize"}
+    try:    
+        g_api_key = context_api_key.get()
+        client = genai.Client(api_key=g_api_key)
+        cleaned = (content or "").strip()
+        if not cleaned:
+            return {"status": "nothing_to_summarize"}
 
-    async def _message_text(resp) -> str:
-        msg = resp.text.strip()
+        async def _message_text(resp) -> str:
+            msg = resp.text.strip()
+        
+            return msg
+
+        summary_prompt = f"""You are creating durable memory for an AI research assistant.
+    Summarize this conversation so it can be resumed accurately later.
+
+    Output with exactly these headings:
+    ### Technical Information
+    ### Emotional Context
+    ### Entities & References
+    ### Action Items & Decisions
+
+    Rules:
+    - Keep concrete details (names, dates, APIs, errors, decisions).
+    - Separate confirmed facts from open questions where relevant.
+    - Do not invent information.
+    - Keep it concise and useful for continuation.
+
+    Conversation:
+    {cleaned[:6000]}"""
        
-        return msg
-
-    summary_prompt = f"""You are creating durable memory for an AI research assistant.
-Summarize this conversation so it can be resumed accurately later.
-
-Output with exactly these headings:
-### Technical Information
-### Emotional Context
-### Entities & References
-### Action Items & Decisions
-
-Rules:
-- Keep concrete details (names, dates, APIs, errors, decisions).
-- Separate confirmed facts from open questions where relevant.
-- Do not invent information.
-- Keep it concise and useful for continuation.
-
-Conversation:
-{cleaned[:6000]}"""
-   
-    response = client.models.generate_content(
-        model=model,
-        contents=summary_prompt,
-    )
-    summary = await _message_text(response)
-
-    # Retry once with a simpler prompt if output is empty.
-    if not summary:
-        retry_prompt = f"""Summarize this conversation in <= 180 words using these headings:
-### Technical Information
-### Emotional Context
-### Entities & References
-### Action Items & Decisions
-
-Conversation:
-{cleaned[:6000]}"""
-        retry = client.models.generate_content(
+        response = await client.aio.models.generate_content(
             model=model,
-            messages=retry_prompt,
+            contents=summary_prompt,
         )
-        summary = await _message_text(retry)
+        summary = await _message_text(response)
 
-    if not summary:
-        excerpt = cleaned[:500].replace("\n", " ").strip()
-        summary = (
-            "### Technical Information\n"
-            f"{excerpt or '(No content provided.)'}\n\n"
-            "### Emotional Context\n"
-            "Not available from model output.\n\n"
-            "### Entities & References\n"
-            "Not available from model output.\n\n"
-            "### Action Items & Decisions\n"
-            "Not available from model output."
+        # Retry once with a simpler prompt if output is empty.
+        if not summary:
+            retry_prompt = f"""Summarize this conversation in <= 180 words using these headings:
+    ### Technical Information
+    ### Emotional Context
+    ### Entities & References
+    ### Action Items & Decisions
+
+    Conversation:
+    {cleaned[:6000]}"""
+            retry = await client.aio.models.generate_content(
+                model=model,
+                messages=retry_prompt,
+            )
+            summary = await _message_text(retry)
+
+        if not summary:
+            excerpt = cleaned[:500].replace("\n", " ").strip()
+            summary = (
+                "### Technical Information\n"
+                f"{excerpt or '(No content provided.)'}\n\n"
+                "### Emotional Context\n"
+                "Not available from model output.\n\n"
+                "### Entities & References\n"
+                "Not available from model output.\n\n"
+                "### Action Items & Decisions\n"
+                "Not available from model output."
+            )
+
+        desc_prompt = f"""Create a short 8-12 word label for this summary.
+    Return ONLY the label.
+
+    Summary:
+    {summary}"""
+
+        desc_response = await client.aio.models.generate_content(
+            model=model,
+            messages=desc_prompt,
         )
+        description = await _message_text(desc_response) or "Conversation summary"
 
-    desc_prompt = f"""Create a short 8-12 word label for this summary.
-Return ONLY the label.
+        summary_id = str(uuid.uuid4())[:8]
+        memory_manager.write_summary(summary_id, cleaned, summary, description)
 
-Summary:
-{summary}"""
-
-    desc_response = client.models.generate_content(
-        model=model,
-        messages=desc_prompt,
-    )
-    description = await _message_text(desc_response) or "Conversation summary"
-
-    summary_id = str(uuid.uuid4())[:8]
-    memory_manager.write_summary(summary_id, cleaned, summary, description)
-
-    return {"id": summary_id, "description": description, "summary": summary}
+        return {"id": summary_id, "description": description, "summary": summary}
+    except (errors.APIError,errors.ClientError,errors.ServerError) as e:
+        print(f"{e} error ocure")
+        if isinstance(e,errors.ClientError) and e.code == 429:
+            raise ResourceExhausted() from e
+        elif isinstance(e,errors.ClientError) and e.code == 400:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 401:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 403:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 404:
+            raise InvalidArgumentError() from e
+        
+        elif isinstance(e,errors.ServerError) and e.code == 503:
+            raise UnavailableError() from e
 
 
 
@@ -262,7 +289,8 @@ async def get_current_user_dpt_name(departments:list[uuid.UUID]):
      dpt =  [ dpt.name for dpt in departments]
      return dpt
  
-async def generate_session_title(user_query: str,model="gemini-3.5-flash"):
+async def generate_session_title(user_query: str,model="gemini-3.5-flash",model_api_key:str=None):
+    print(f"generating title...")
     prompt = f"""
     # Role
 
@@ -281,41 +309,31 @@ async def generate_session_title(user_query: str,model="gemini-3.5-flash"):
     User Query:
     {user_query}
     """
-    
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt,
-    )
-    return response.text
-
-
-
-async def get_total_documents_by_tenant(tenant_id: str) -> int:
-    pool = await get_db_pool()
-    async with pool.acquire() as con:
-        row = await con.fetchrow(
-            """
-            SELECT COUNT(DISTINCT id) AS total_documents
-            FROM SEMANTIC_MEMORY
-            WHERE tenant_id = $1
-            """,
-            tenant_id,
+    try:
+        client = genai.Client(api_key=model_api_key)
+        response = await client.aio.models.generate_content(
+            model=model,
+            contents=prompt,
         )
-        return row["total_documents"] if row else 0
+        return response.text
+    except (errors.APIError,errors.ClientError,errors.ServerError) as e:
+       
+        if isinstance(e,errors.ClientError) and e.code == 429:
+            raise ResourceExhausted() from e
+        elif isinstance(e,errors.ClientError) and e.code == 400:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 401:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 403:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 404:
+            raise InvalidArgumentError() from e
+        
+        elif isinstance(e,errors.ServerError) and e.code == 503:
+            raise UnavailableError() from e
+
+
     
-async def get_total_documents_by_department(department_id:uuid.UUID,tenant_id:uuid.UUID) -> int:
-    pool = await get_db_pool()
-    async with pool.acquire() as con:
-        row = await con.fetchrow(
-            """
-            SELECT COUNT(DISTINCT id) AS total_documents
-            FROM SEMANTIC_MEMORY
-            WHERE department_id = $1 AND tenant_id = $2
-            """,
-            department_id,
-            tenant_id
-        )
-        return row["total_documents"] if row else 0
 
      
  

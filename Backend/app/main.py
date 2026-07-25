@@ -14,6 +14,8 @@ from arq import create_pool, ArqRedis
 from arq.connections import RedisSettings
 from arq.jobs import Job, JobStatus, JobResult
 from src.guardrails.guardrails import GuardrailViolation
+from src.exceptions.llm_except import LLMError
+from prometheus_fastapi_instrumentator import Instrumentator
 
 
 @asynccontextmanager
@@ -42,6 +44,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Mem Agentic Rag",
               summary="Agentic Rag with advance memory with semantic tool management",lifespan=lifespan)
+
+Instrumentator().instrument(app).expose(app)
+
 app.include_router(connectors.router)
 app.include_router(fileupload.router)
 app.include_router(department.router)
@@ -55,10 +60,17 @@ app.include_router(password.router)
 
 
 @app.exception_handler(GuardrailViolation)
-async def unicorn_exception_handler(request: Request, exc: GuardrailViolation):
+async def llm_exception_handler(request: Request, exc: GuardrailViolation):
     return JSONResponse(
         status_code=exc.status_code,
         content={"response":{"answer":exc.user_message,"citations":[]}},
+    )
+
+@app.exception_handler(LLMError)
+async def unicorn_exception_handler(request: Request, exc: LLMError):
+    return JSONResponse(
+        status_code=exc.code,
+        content={"detail":exc.error_message},
     )
 
 # CORS (Cross-Origin Resource Sharing) config
@@ -76,11 +88,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.on_event("startup")
-async def startup_event():
-   print('JobStatus:', [s.value for s in JobStatus])
-   print('from_dsn ok:', RedisSettings.from_dsn(os.getenv("REDIS_CONNECTION")))
     
 
 

@@ -41,6 +41,8 @@ export function getUserSessionDetail(
 export function sendMessage(
   sessionId: string,
   userQuery: string,
+  modelName:string,
+  modelApiKey:string,
   token: string
 ): Promise<SendMessageResponse> {
   const body = new URLSearchParams();
@@ -48,6 +50,9 @@ export function sendMessage(
   body.set("session_id", sessionId);
 
   return apiFormRequest<SendMessageResponse>("/chat/", body, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 
+    "x-gemini-api-key":modelApiKey,
+    "x-gemini-model": modelName
+  },
   });
 }

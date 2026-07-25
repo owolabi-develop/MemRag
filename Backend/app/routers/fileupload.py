@@ -12,6 +12,8 @@ from sqlmodel import select
 from pydantic import BaseModel
 from app.utils.s3_storage import  build_object_key, upload_file_to_s3, generate_presigned_url, SPACES_BUCKET_NAME
 from arq.jobs import Job, JobStatus, JobResult
+import time 
+from app.metrics.metrics import job_completed,job_failed,job_duration,active_jobs,job_started
 
 class IngestJob(BaseModel):
     job_id: str
@@ -58,24 +60,35 @@ async def upload_documents(
     content_type = file.content_type
     job = await pool.enqueue_job("load_document",filename,str(content_type),file_byte,department.name, str(department_id), str(tenant_id), str(current_user.id))
     
-       
     return IngestJob(job_id=job.job_id, status="queued")
 
+
+@active_jobs.track_inprogress()
 @router.get("/ingest/status/{job_id}")
 async def ingest_status(job_id: str, pool: ArqPool) -> dict:
     """Poll for job progress. Frontend polls this until status == 'complete'."""
+    
+    
     job = Job(job_id, pool)
+    start_job_t = time.perf_counter()
     status = await job.status()
     if status == JobStatus.not_found:
+          ## track total job fi
+        job_failed.labels(job_id=job_id).inc()
         raise HTTPException(status_code=404, detail="Job not found")
     if status == JobStatus.complete:
         info = await job.result_info()
+         ## track total job completed
+        job_completed.labels(job_id=job_id).inc()
         return {
             "status": "complete",
             "success": info.success,
             "result": info.result if info.success else None,
             "error": str(info.result) if not info.success else None,
         }
+    job_end_t = time.perf_counter()
+    job_duration.labels(job_id=job_id).observe(job_end_t - job_started)
+       
     return {"status": status.value}
 
 

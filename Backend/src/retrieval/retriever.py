@@ -13,6 +13,8 @@ import os
 import torch
 import os
 from sentence_transformers import CrossEncoder
+import time
+from app.metrics.metrics import reranker_duration,retrieval_duration,embedding_duration
 num_cores = "4" 
 os.environ["MKL_NUM_THREADS"] = num_cores
 os.environ["OMP_NUM_THREADS"] = num_cores
@@ -44,7 +46,7 @@ def re_rank(query: str, documents: list[dict], top_k: int = 5) -> list[dict]:
 
 async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], tenant_id: uuid.UUID, k: int=3):
     
-
+    
     print("department_ids",department_ids,"tanant",tenant_id)
     sql = """
     WITH semantic_search AS (
@@ -71,14 +73,20 @@ async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], ten
     ORDER BY score DESC
     LIMIT $5
             """
-
+    # track embedding
+    emb_start = time.perf_counter()
     embedding = await hug_embedding(query)
+    emb_end = time.perf_counter()
+    embedding_duration.observe(emb_end - emb_start)
+    
+      ## track retriever
+    start_retriever = time.perf_counter()
     pool = await get_db_pool()
     async with pool.acquire() as con:
-        
+       
         results = await con.fetch(sql,query,embedding,
                                       department_ids, tenant_id,k)
-
+        
         if not results:
             return json.dumps({"documents": [], "message": "No relevant documents found."})
     
@@ -103,7 +111,14 @@ async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], ten
         }
         compressed_docs.append(doc_entry)
         
+    end_retriever = time.perf_counter()
+    retrieval_duration.observe(end_retriever - start_retriever)
+    
+    ## track re-ranker duration
+    start_r = time.perf_counter()
     compressed_docs = re_rank(query,compressed_docs)
+    end_r = time.perf_counter()
+    reranker_duration.observe(end_r - start_r)
     return json.dumps({"documents": compressed_docs})
 
 
