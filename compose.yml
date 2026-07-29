@@ -1,0 +1,108 @@
+services:
+  traefik:
+    image: traefik:v3.7
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  redis:
+    image: redis/redis-stack-server
+    ports:
+      - '6379:6379'
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: groundly-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=845633
+      - POSTGRES_DB=MemRag
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "5432:5432"
+    restart: always
+  
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=owolabidevelop84@gmail.com
+      - PGADMIN_DEFAULT_PASSWORD=845633
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.db.rule=Host(`db.localhost`)"
+      - "traefik.http.services.db.loadbalancer.server.port=80"
+  
+  frontend:
+    build:
+      context: ./frontend/Mem-rag
+    env_file:
+      - ./frontend/Mem-rag/.env
+    # depends_on:
+    #   - api
+    labels:
+      - "traefik.http.routers.frontend.rule=Host(`localhost`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+  api:
+    build:
+      context: backend
+    restart: "no"
+    env_file:
+      - ./backend/.env
+
+    container_name: groundly-backend
+    depends_on:
+      - redis
+      - db 
+    labels:
+      - "traefik.http.routers.api.rule=Host(`localhost`) && PathPrefix(`/api/v1`)"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+  workers:
+    build:
+      context: backend
+    command: arq src.platform.worker.WorkerSettings
+    depends_on:
+      - redis
+      - db
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    # depends_on:
+    #   - api
+    restart: unless-stopped
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prom_data:/prometheus
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.localhost`)"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana
+    volumes:
+      - ./grafana:/etc/grafana/provisioning/datasources
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.localhost`)"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+volumes:
+  prom_data:
+  redis_data:
+  pgdata:

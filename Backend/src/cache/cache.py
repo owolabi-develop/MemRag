@@ -1,8 +1,8 @@
 import asyncio
 import warnings
 warnings.filterwarnings('ignore')
-from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.utils.vectorize import HFTextVectorizer
+from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 import os
 from redisvl.query.filter import Tag
@@ -10,7 +10,7 @@ import uuid
 import redis
 os.environ["TOKENIZERS_PARALLELISM"] = "False"
 
-r = redis.Redis.from_url(os.getenv("REDIS_CREDENTIAL"), )
+r = redis.Redis(host=os.getenv("REDIS_SERVER"),port=os.getenv("REDIS_PORT"),decode_responses=True)
 cache_embed = HFTextVectorizer(
     model="redis/langcache-embed-v1",
     cache=EmbeddingsCache(redis_client=r, ttl=3600),
@@ -18,7 +18,7 @@ cache_embed = HFTextVectorizer(
 
 
 mem_cache = SemanticCache(
-    name="mem-cache",                                        
+    name="groundly-cache-2",                                        
     redis_client=r,                     
     distance_threshold=0.3, 
     ttl=86400,                             

@@ -24,9 +24,9 @@ HUB_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
 
 if os.path.isdir(LOCAL_MODEL_PATH):
 
-    model = SentenceTransformer(LOCAL_MODEL_PATH)
+    model = SentenceTransformer(LOCAL_MODEL_PATH,device="cpu")
 else:
-    model = SentenceTransformer(HUB_MODEL_NAME)
+    model = SentenceTransformer(HUB_MODEL_NAME,device="cpu")
     model.save(LOCAL_MODEL_PATH)
 
 

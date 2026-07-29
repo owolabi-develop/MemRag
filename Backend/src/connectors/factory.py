@@ -2,13 +2,11 @@
 
 from src.connectors.base import BaseConnector
 from src.connectors.google_drive import GoogleDriverConnector
-from src.connectors.onedrive import OneDriveConnector
 from src.connectors.s3 import S3Connector
 from src.connectors.dropbox_connector import DropBoxConnector
 
 CONNECTOR_REGISTRY: dict[str, type[BaseConnector]] = {
     "google_drive": GoogleDriverConnector,
-    "onedrive": OneDriveConnector,
     "amazon_s3": S3Connector,
     "dropbox": DropBoxConnector,
 }

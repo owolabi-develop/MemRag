@@ -10,6 +10,6 @@ import json
 
 class WorkerSettings:
     functions = [load_document,sync_connector_file]
-    redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_CONNECTION"))
+    redis_settings = RedisSettings(host=os.getenv("REDIS_SERVER"),port=os.getenv("REDIS_PORT"))
     max_jobs = 10
     job_timeout = 700 

@@ -23,8 +23,8 @@ async def lifespan(app: FastAPI):
      await init_db()
      
     # create vector dbs and index
-    # await StoreManager().create_db()
-    #await register_common_tools()
+     await StoreManager().create_db()
+     await register_common_tools()
     
      try:
         pool = await create_pool(RedisSettings.from_dsn(os.getenv("REDIS_CONNECTION")))
@@ -43,7 +43,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Mem Agentic Rag",
-              summary="Agentic Rag with advance memory with semantic tool management",lifespan=lifespan)
+              summary="Agentic Rag with advance memory with semantic tool management",lifespan=lifespan,
+              root_path="/api/v1")
 
 Instrumentator().instrument(app).expose(app)
 

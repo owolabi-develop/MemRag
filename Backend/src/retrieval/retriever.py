@@ -26,8 +26,8 @@ torch.set_float32_matmul_precision('high')
 
 
 
-LOCAL_CROSS_ENCODER_PATH = os.path.join(os.path.dirname(__file__), "ms_marco_minilm_l6_v2_local")
-HUB_CROSS_ENCODER_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+LOCAL_CROSS_ENCODER_PATH = os.path.join(os.path.dirname(__file__), "bge_reranker_v2_m3_local")
+HUB_CROSS_ENCODER_NAME = "BAAI/bge-reranker-v2-m3"
 
 if os.path.isdir(LOCAL_CROSS_ENCODER_PATH):
   

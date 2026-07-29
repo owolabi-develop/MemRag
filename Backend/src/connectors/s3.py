@@ -1,6 +1,3 @@
-# connectors/s3.py
-# pip install boto3
-
 import asyncio
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError,EndpointConnectionError

@@ -18,7 +18,7 @@ class UserRole(str,Enum):
     MANAGER = "manager"
     USER = "employee"
     
-class UserInvite(str,Enum):
+class Invite(str,Enum):
     PENDING = "pending"
     ACCEPTED = "accepted"
     MAIN = "main"
@@ -39,7 +39,7 @@ class TenantBase(SQLModel):
 class Tenant(TenantBase,table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True) 
     departments: list["Department"] = Relationship(back_populates="tenant",sa_relationship_kwargs={"lazy": "selectin"})
-    users: list[User] = Relationship(back_populates="tenant",sa_relationship_kwargs={"lazy": "selectin"})
+    users: list["User"] = Relationship(back_populates="tenant",sa_relationship_kwargs={"lazy": "selectin"})
     
 class TenantCreate(TenantBase):
     pass
@@ -49,7 +49,7 @@ class TenantPublic(TenantBase):
     created_at: datetime | None = None 
     
 class TenantPublicWithDept(TenantPublic):
-    departments: list[DepartmentPublicWithUsers] = []
+    departments: list["DepartmentPublicWithUsers"] = []
 ## department user link
 class DepartmentUserLink(SQLModel, table=True):
     department_id: uuid.UUID = Field(default=None,foreign_key="department.id", primary_key=True)
@@ -125,7 +125,7 @@ class UserBase(SQLModel):
     is_active: bool = True
     is_superuser: bool = False
     role: UserRole = Field(default=UserRole.USER)
-    status: UserInvite = Field(default=UserInvite.MAIN)
+    status: Invite = Field(default=Invite.MAIN)
     invited:bool = Field(default=False)
     first_name: str | None = Field(default=None, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
@@ -255,7 +255,7 @@ class UserInvite(SQLModel):
     first_name: str | None = None
     last_name: str | None = None
     role: UserRole = UserRole.USER
-    status:UserInvite = UserInvite.PENDING
+    status:Invite = Invite.PENDING
 
 
 

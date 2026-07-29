@@ -1,6 +1,3 @@
-# connectors/google_drive.py
-# pip install google-api-python-client google-auth
-
 import asyncio
 import io
 from google.oauth2 import service_account
