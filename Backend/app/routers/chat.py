@@ -9,19 +9,22 @@ from src.agent_call import call_agent
 import uuid
 from src.guardrails.guardrails import GuardrailViolation,input_guard,output_guard,PIIDetectedError,GibberishContentError,ToxicContentError,DetectJailbreakContentError
 from starlette.concurrency import run_in_threadpool
-from src.utils.helper import context_api_key
+from src.utils.helper import context_api_key,context_cohere_api_key
 router = APIRouter(prefix="/chat",
                    tags=['chats'])
 from src.utils.helper import (get_current_user_dpt,
                               get_current_user_dpt_name,generate_session_title)
 
 @router.post("/")
-async def chatAgent(user_query: Annotated[str, Form()],session_id: Annotated[uuid.UUID, Form()],current_user:Annotated[User, Depends(get_current_active_user)],session:sessionCreator,x_gemini_api_key:Annotated[str| None, Header()]=None,x_gemini_model:Annotated[str | None, Header()]=None):
+async def chatAgent(user_query: Annotated[str, Form()],session_id: Annotated[uuid.UUID, Form()],current_user:Annotated[User, Depends(get_current_active_user)],session:sessionCreator,x_gemini_api_key:Annotated[str| None, Header()]=None,x_gemini_model:Annotated[str | None, Header()]=None,x_cohere_api_key:Annotated[str | None, Header()]=None):
+    
     print(f"model_name {x_gemini_model}")
     if not x_gemini_api_key :
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"failed initialized chat, model API-Key is missing. check your settings page for update, then try again.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="failed to initialized chat, model API-Key is missing. check your settings page for update, then try again.")
     if not x_gemini_model :
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"failed initialized chat Model-Name is missing.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="failed to initialized chat Model-Name is missing.")
+    if not x_cohere_api_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="failed initialized ranking Model API-K check your settings page for update, then try again.")
     if current_user.departments is None or len(current_user.departments) == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"User {current_user.first_name} does not belong to any department.")
     
@@ -46,10 +49,13 @@ async def chatAgent(user_query: Annotated[str, Form()],session_id: Annotated[uui
     except (PIIDetectedError,ToxicContentError) as exec:
         raise exec
     token = context_api_key.set(x_gemini_api_key)
+    rank_token = context_cohere_api_key.set(x_cohere_api_key)
     
     response = await call_agent(user_query, user_dpt,user_dpt_name,current_user_details,current_user.tenant_id, current_user.id,session_id,x_gemini_model,x_gemini_api_key)
     
     context_api_key.reset(token)
+    context_cohere_api_key.reset(rank_token)
+    
     
     return {"response": response}
 

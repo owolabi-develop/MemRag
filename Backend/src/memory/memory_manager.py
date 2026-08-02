@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from src.embeddings.embedder import hug_embedding
+from src.embeddings.embedder import google_embedding
 from google import genai
 from google.genai import types
 import os
@@ -160,7 +160,7 @@ class MemoryManager:
         print(f" Marked messages as summarized (summary_id: {summary_id})")
         
     async def add_text_to_vs(self, table_name: str, content: str ,metadata:dict):
-        embedding = await hug_embedding(content)
+        embedding = await google_embedding(content)
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             await con.execute(f"""
@@ -172,7 +172,7 @@ class MemoryManager:
         print(f"upserting document to table: {table_name}")
         
     async def add_text_to_vs_with_ids(self, table_name: str, content: str ,metadata:dict,tenant_id: uuid.UUID):
-        embedding = await hug_embedding(content)
+        embedding = await google_embedding(content)
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             await con.execute(f"""
@@ -185,7 +185,7 @@ class MemoryManager:
         
     async def similarity_search_vs(self,table_name: str, query: str, k: int =3):
         ## similarity search for all vs method
-        embedding = await hug_embedding(query)
+        embedding = await google_embedding(query)
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             result = await con.fetch(f"""
@@ -196,7 +196,7 @@ class MemoryManager:
             return result
         
     async def similarity__with_filter_search_vs(self,table_name: str,query:str, filters: dict, k: int =3):
-        embedding = await hug_embedding(query)
+        embedding = await google_embedding(query)
         pool = await MemoryManager.get_pool()
         async with pool.acquire() as con:
             result = await con.fetch(f"""

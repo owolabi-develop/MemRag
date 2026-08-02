@@ -1,10 +1,14 @@
 import { useEffect, useRef } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router";
-import { Mail, User, Shield, ArrowRight,CheckCircle2 } from "lucide-react";
+import { Mail, User, Shield, ArrowRight, CheckCircle2 } from "lucide-react";
+import type { UUID } from "crypto";
 import { useAuthStore } from "../../shared/store/authStore";
+import { useSTenantIDStore } from "../../shared/store/TenantStore"; 
+import { useTenantQuery } from "../../shared/hooks/useTenant";
 import { useInvitedUsersQuery, useInviteUserMutation } from "../../shared/hooks/Useinvitedusers";
 import type { InviteUsers } from "../../shared/types/InviteUser";
+
 
 const ROLES = [
   {
@@ -32,6 +36,18 @@ export default function InviteUser() {
       navigate("/login", { replace: true });
     }
   }, [accessToken, navigate]);
+
+  // Fetch the tenant and persist its id the moment it's available, so
+  // it's ready in the store for anything else on the page (or other
+  // pages) that needs it without re-fetching.
+  const { data: tenant } = useTenantQuery();
+  const setTenantId = useSTenantIDStore((s) => s.setID);
+
+  useEffect(() => {
+    if (tenant?.id) {
+      setTenantId(tenant.id as UUID);
+    }
+  }, [tenant?.id, setTenantId]);
 
   const {
     data: inviteUsers,

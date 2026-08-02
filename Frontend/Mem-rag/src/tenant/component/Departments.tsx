@@ -20,8 +20,7 @@ import {
   useRemoveUserFromDepartmentMutation,
 } from "../../shared/hooks/useDepartments";
 import { useInvitedUsersQuery } from "../../shared/hooks/Useinvitedusers";
-import { ApiError } from "../../shared/api/httpClient"; // adjust to match your actual path
-
+import { ApiError } from "../../shared/api/httpClient"; 
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString("en-US", {
     day: "2-digit",

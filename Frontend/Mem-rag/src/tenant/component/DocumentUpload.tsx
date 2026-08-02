@@ -225,9 +225,6 @@ export default function DocumentUpload() {
   const [isDragging, setIsDragging] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [departmentError, setDepartmentError] = useState<string | null>(null);
-
-  // Restored from localStorage on mount — this is what makes progress
-  // survive navigation away and back, or a full page refresh.
   const [trackedJobs, setTrackedJobs] = useState<TrackedJob[]>([]);
 
   useEffect(() => {
@@ -253,7 +250,6 @@ export default function DocumentUpload() {
       if (inputRef.current) inputRef.current.value = "";
       formRef.current?.reset();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionData]);
 
   function handleDismiss(jobId: string) {

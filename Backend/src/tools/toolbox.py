@@ -1,4 +1,4 @@
-from src.embeddings.embedder import hug_embedding
+from src.embeddings.embedder import google_embedding
 import inspect
 from pydantic import BaseModel, Field
 from typing import List,Callable,Optional,Union
@@ -42,7 +42,7 @@ class ToolBox:
         self.client = client
           
      async def _get_embedding(self,text: str) -> list[float]:
-        embedding = await hug_embedding(text)
+        embedding = await google_embedding(text)
         return embedding
     
      async def _check_tool_exist_in_db(self,tool_name:str):

@@ -1,39 +1,63 @@
-from src.llm.llm_client import client
 import asyncio
 from google.genai import types
-from sentence_transformers import SentenceTransformer
 import os
+from src.exceptions.llm_except import LLMError,LLMRateLimitError,AuthenticationError,ResourceExhausted,InvalidArgumentError,UnavailableError
+from google import genai
+from google.genai import errors
 
-os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+async def google_embedding(content:str,model_output_dimensionality:int=1536): 
+    from src.utils.helper import context_api_key
+    try:
+        model_api_key = context_api_key.get() 
+        client = genai.Client(api_key=model_api_key)
+        result = await client.aio.models.embed_content(
+        model="gemini-embedding-001",
+        contents=content,
+        config=types.EmbedContentConfig(
+            output_dimensionality=model_output_dimensionality))
+        [embedding_obj] = result.embeddings
+        return embedding_obj.values
+    except (errors.APIError,errors.ClientError,errors.ServerError) as e:
+        print(f"{e} error ocure on chat")
+        if isinstance(e,errors.ClientError) and e.code == 429:
+            raise ResourceExhausted() from e
+        elif isinstance(e,errors.ClientError) and e.code == 400:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 401:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 403:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 404:
+            raise InvalidArgumentError() from e
+        
+        elif isinstance(e,errors.ServerError) and e.code == 503:
+            raise UnavailableError() from e
 
-HF_TOKEN = os.getenv("HF_TOKEN")
-
-async def google_embedding(content:str,model_output_dimensionality:int=1536):    
-    result = client.models.embed_content(
-    model="gemini-embedding-001",
-    contents=content,
-    config=types.EmbedContentConfig(
-        output_dimensionality=model_output_dimensionality))
-    [embedding_obj] = result.embeddings
-    return embedding_obj.values
 
 
-
-LOCAL_MODEL_PATH = "./mpnet_base_v2_local"
-HUB_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
-
-if os.path.isdir(LOCAL_MODEL_PATH):
-
-    model = SentenceTransformer(LOCAL_MODEL_PATH,device="cpu")
-else:
-    model = SentenceTransformer(HUB_MODEL_NAME,device="cpu")
-    model.save(LOCAL_MODEL_PATH)
-
-
-async def hug_embedding(content: str):
-    loop = asyncio.get_running_loop()
-    embedding = await loop.run_in_executor(
-        None,
-        lambda: model.encode(content, normalize_embeddings=True)
-    )
-    return embedding.tolist()
+async def google_embedding_ingest(content:str,api_key:str,model_output_dimensionality:int=1536): 
+    from src.utils.helper import context_api_key
+    try:
+        client = genai.Client(api_key=api_key)
+        result = await client.aio.models.embed_content(
+        model="gemini-embedding-001",
+        contents=content,
+        config=types.EmbedContentConfig(
+            output_dimensionality=model_output_dimensionality))
+        [embedding_obj] = result.embeddings
+        return embedding_obj.values
+    except (errors.APIError,errors.ClientError,errors.ServerError) as e:
+        print(f"{e} error ocure on chat")
+        if isinstance(e,errors.ClientError) and e.code == 429:
+            raise ResourceExhausted() from e
+        elif isinstance(e,errors.ClientError) and e.code == 400:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 401:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 403:
+            raise AuthenticationError() from e
+        elif isinstance(e,errors.ClientError) and e.code == 404:
+            raise InvalidArgumentError() from e
+        
+        elif isinstance(e,errors.ServerError) and e.code == 503:
+            raise UnavailableError() from e

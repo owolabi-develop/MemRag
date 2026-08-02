@@ -32,8 +32,8 @@ export const useGeminiSettingsStore = create<GeminiSettingsState>()(
     (set) => ({
       apiKey: "",
       model: "gemini-2.5-flash",
-      setGeminiSettings: (apiKey, model) => set({ apiKey, model }),
-      clearGeminiSettings: () => set({ apiKey: "", model: "gemini-2.5-flash" }),
+      setGeminiSettings: (apiKey, model) => set({ apiKey, model}),
+      clearGeminiSettings: () => set({ apiKey: "", model: "gemini-2.5-flash",}),
     }),
     {
       name: "groundly:geminiSettings",

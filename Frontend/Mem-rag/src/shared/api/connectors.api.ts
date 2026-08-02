@@ -1,6 +1,7 @@
 
 import { useAuthStore } from "../store/authStore";
 import {apiRequest,apiFileRequest } from "./httpClient";
+import { useGeminiSettingsStore } from "../store/geminiSettingsStore";
 
 export interface RemoteItem {
   name: string;
@@ -94,11 +95,12 @@ export async function syncDocuments(
   payload: SyncDocumentsPayload
 ): Promise<IngestJob[]> {
   const token = useAuthStore.getState().accessToken;
-
+  const modelApikey =  useGeminiSettingsStore.getState().apiKey
   const response = await apiRequest<IngestJob | IngestJob[]>("/connectors/sync", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
+      "x-gemini-api-key":modelApikey,
     },
     body: JSON.stringify({
       connector_id: payload.connectorId,

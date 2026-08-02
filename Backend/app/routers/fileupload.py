@@ -1,4 +1,4 @@
-from fastapi import APIRouter,status
+from fastapi import APIRouter,status,Header
 from fastapi import Depends, HTTPException
 from app.dependencies import sessionCreator,ArqPool
 from app.models import User,UserRole,Department,Document
@@ -24,8 +24,6 @@ router = APIRouter(
     tags=["documents"]
 )
 
-async def hello():
-    print("hello")
 
 @router.post("/",response_model=IngestJob)
 async def upload_documents(
@@ -33,8 +31,12 @@ async def upload_documents(
     department_id: Annotated[uuid.UUID, Form()],
     current_user: Annotated[User, Depends(get_current_active_user)],
     session: sessionCreator,
-    pool: ArqPool
+    pool: ArqPool,
+   x_gemini_api_key:Annotated[str | None, Header()]=None
 ):
+    if not x_gemini_api_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="failed to initialized upload, model API-Key is missing. check your settings page for update, then try again.")
+    
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -52,13 +54,12 @@ async def upload_documents(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This department does not belong to your organization.",
         )
-
+        
     tenant_id = current_user.tenant_id
     file_byte = await file.read()
-    print(file_byte)
     filename = file.filename
     content_type = file.content_type
-    job = await pool.enqueue_job("load_document",filename,str(content_type),file_byte,department.name, str(department_id), str(tenant_id), str(current_user.id))
+    job = await pool.enqueue_job("load_document",filename,str(content_type),file_byte,department.name, str(department_id), str(tenant_id), str(current_user.id),x_gemini_api_key)
     
     return IngestJob(job_id=job.job_id, status="queued")
 
@@ -87,7 +88,7 @@ async def ingest_status(job_id: str, pool: ArqPool) -> dict:
             "error": str(info.result) if not info.success else None,
         }
     job_end_t = time.perf_counter()
-    job_duration.labels(job_id=job_id).observe(job_end_t - job_started)
+    job_duration.labels(job_id=job_id).observe(job_end_t - start_job_t)
        
     return {"status": status.value}
 

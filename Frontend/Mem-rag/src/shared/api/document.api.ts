@@ -1,6 +1,7 @@
 
 import {apiRequest,apiFileRequest } from "../api/httpClient"; // adjust to 
 import { useAuthStore } from "../store/authStore";
+import { useGeminiSettingsStore } from "../store/geminiSettingsStore";
 
 
 export interface UploadDocumentResponse {
@@ -27,9 +28,11 @@ export async function uploadDocument(
   formData: FormData
 ): Promise<UploadDocumentResponse> {
   const token = useAuthStore.getState().accessToken;
+   const modelApikey = useGeminiSettingsStore.getState().apiKey
   return apiFileRequest<UploadDocumentResponse>("/documents/upload/", formData, {
     headers: {
       Authorization: `Bearer ${token}`,
+      "x-gemini-api-key":modelApikey,
     },
   });
 }

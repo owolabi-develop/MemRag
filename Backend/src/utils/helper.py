@@ -12,6 +12,8 @@ from contextvars import ContextVar
 
 context_api_key : ContextVar[str] = ContextVar('api_key', default="")
 
+context_cohere_api_key : ContextVar[str] = ContextVar('api_key', default="")
+
 
 memory_manager = MemoryManager()
 # Context window calculator - returns percentage used

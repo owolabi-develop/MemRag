@@ -1,5 +1,5 @@
 from sqlmodel import text
-from src.embeddings.embedder import hug_embedding
+from src.embeddings.embedder import google_embedding
 from app.db import async_session_pool
 from src.connection.connections import get_db_pool
 from sqlalchemy import bindparam
@@ -7,42 +7,27 @@ from pgvector.sqlalchemy import VECTOR
 import uuid
 import json
 from sqlalchemy.dialects.postgresql import UUID,ARRAY
-from sentence_transformers import CrossEncoder
 from src.prompts.compress_prompt import compress_prompt
 import os
-import torch
 import os
-from sentence_transformers import CrossEncoder
 import time
+import cohere
+import yaml
+
 from app.metrics.metrics import reranker_duration,retrieval_duration,embedding_duration
-num_cores = "4" 
-os.environ["MKL_NUM_THREADS"] = num_cores
-os.environ["OMP_NUM_THREADS"] = num_cores
-torch.set_num_threads(int(num_cores))
-
-# Enable fast, lower-precision math for CPU if supported
-torch.set_float32_matmul_precision('high') 
-
-
-
-
-LOCAL_CROSS_ENCODER_PATH = os.path.join(os.path.dirname(__file__), "bge_reranker_v2_m3_local")
-HUB_CROSS_ENCODER_NAME = "BAAI/bge-reranker-v2-m3"
-
-if os.path.isdir(LOCAL_CROSS_ENCODER_PATH):
   
-    encoder = CrossEncoder(LOCAL_CROSS_ENCODER_PATH, device="cpu")
-else:
-   
-    encoder = CrossEncoder(HUB_CROSS_ENCODER_NAME, device="cpu")
-    encoder.save(LOCAL_CROSS_ENCODER_PATH)
-
       
 def re_rank(query: str, documents: list[dict], top_k: int = 5) -> list[dict]:
-    
-    passages = [doc["content"] for doc in documents]
-    ranked = encoder.rank(query, passages, top_k=top_k, return_documents=False)
-    return [documents[item["corpus_id"]] for item in ranked]
+    from src.utils.helper import context_cohere_api_key
+    co = cohere.ClientV2(context_cohere_api_key.get()) 
+    yaml_docs = [yaml.dump(doc, sort_keys=False) for doc in documents]
+    results = co.rerank(
+        model="rerank-v4.0-pro", 
+        query=query,
+        documents=yaml_docs, top_n=top_k)
+  
+    ranked_docs = [documents[result.index] for result in results.results]
+    return ranked_docs
 
 async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], tenant_id: uuid.UUID, k: int=3):
     
@@ -75,7 +60,7 @@ async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], ten
             """
     # track embedding
     emb_start = time.perf_counter()
-    embedding = await hug_embedding(query)
+    embedding = await  google_embedding(query)
     emb_end = time.perf_counter()
     embedding_duration.observe(emb_end - emb_start)
     

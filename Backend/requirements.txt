@@ -892,5 +892,5 @@ zipp==4.1.0
     # via importlib-metadata
 zstandard==0.25.0
     # via langsmith
---extra-index-url https://download.pytorch.org/whl/cpu
+cohere>=7.0.8
 sentence-transformers

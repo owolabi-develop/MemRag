@@ -20,6 +20,7 @@ import {
   GEMINI_MODELS,
   type GeminiModelId,
 } from "../../shared/store/geminiSettingsStore";
+import { useCohereSettingsStore } from "../../shared/store/cohereSettingsStore";
 
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString("en-US", {
@@ -152,6 +153,108 @@ function GeminiSettingsSection() {
           </button>
 
           {apiKey && (
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="flex h-11 items-center justify-center rounded-xl border border-neutral-200 px-5 text-sm font-medium text-neutral-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function CohereSettingsSection() {
+  const { cohere, setApiKey, clearApiKey } = useCohereSettingsStore();
+
+  const [cohereApiKeyInput, setCohereApiKeyInput] = useState(cohere ?? "");
+  const [showKey, setShowKey] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!cohereApiKeyInput.trim()) {
+      setError("Enter your Cohere API key.");
+      return;
+    }
+
+    setError(null);
+    setApiKey(cohereApiKeyInput.trim());
+  }
+
+  function handleRemove() {
+    clearApiKey();
+    setCohereApiKeyInput("");
+    setError(null);
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-6 xl:col-span-2">
+      <div className="flex items-center gap-3">
+        <Sparkles size={18} />
+        <h2 className="font-semibold">Cohere API Key</h2>
+      </div>
+
+      <p className="mt-2 text-sm text-neutral-500">
+        Add your Cohere API key for reranking. Stored only in this browser not sent to our
+        servers.
+      </p>
+
+      {cohereApiKeyInput && (
+        <div className="mt-6 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <CheckCircle2 size={16} />
+          Cohere key saved.
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-6 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertCircle size={16} />
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+        {/* API key */}
+        <div>
+          <label className="mb-2 block text-sm font-medium">
+            API Key <span className="text-red-500">*</span>
+          </label>
+
+          <div className="flex h-11 items-center rounded-xl border border-neutral-300 px-4 focus-within:border-black">
+            <KeyRound size={15} className="mr-2 flex-shrink-0 text-neutral-400" />
+            <input
+              type={showKey ? "text" : "password"}
+              value={cohereApiKeyInput}
+              onChange={(e) =>  setCohereApiKeyInput(e.target.value)}
+              placeholder="Enter your Cohere API key"
+              className="w-full min-w-0 outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((v) => !v)}
+              tabIndex={-1}
+              className="ml-2 flex-shrink-0 text-neutral-400 hover:text-neutral-700"
+            >
+              {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-neutral-900 text-white transition-opacity hover:opacity-90"
+          >
+            <KeyRound size={16} />
+            {cohereApiKeyInput ? "Update key" : "Save key"}
+          </button>
+
+          {cohereApiKeyInput && (
             <button
               type="button"
               onClick={handleRemove}
@@ -442,6 +545,7 @@ export default function Settings() {
         </div>
 
         <GeminiSettingsSection />
+        <CohereSettingsSection />
       </div>
     </div>
   );

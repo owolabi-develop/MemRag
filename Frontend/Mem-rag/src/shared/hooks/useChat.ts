@@ -11,6 +11,8 @@ import { getDocumentViewUrl } from "../api/documentView.api";
 import { ApiError } from "../api/httpClient";
 import { useAuthStore } from "../store/authStore";
 import { useGeminiSettingsStore } from "../store/geminiSettingsStore";
+import { useCohereSettingsStore } from "../store/cohereSettingsStore";
+
 import type {
   ChatSessionSummary,
   Citation,
@@ -132,6 +134,7 @@ export function useSendMessageMutation(sessionId: string | null) {
   const queryClient = useQueryClient();
   const accessToken = useAuthStore((s) => s.accessToken);
   const apiKey = useGeminiSettingsStore((s) => s.apiKey);
+   const cohereApi = useCohereSettingsStore((s) => s.cohere);
   const model = useGeminiSettingsStore((s) => s.model);
 
   return useMutation<
@@ -144,7 +147,7 @@ export function useSendMessageMutation(sessionId: string | null) {
       if (!accessToken) throw new ApiError(401, "Not authenticated");
       if (!sessionId) throw new ApiError(400, "No session selected");
 
-      const data = await sendMessage(sessionId, userQuery,model,apiKey, accessToken);
+      const data = await sendMessage(sessionId, userQuery,model,apiKey, accessToken,cohereApi);
       return {
         answer: data.response.answer,
         citations: mapCitations(data.response.citations),

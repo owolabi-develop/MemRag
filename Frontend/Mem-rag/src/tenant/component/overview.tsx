@@ -37,9 +37,6 @@ export default function Overview() {
   } = useTenantDocumentCountQuery();
 
   const departmentDocQueries = useDepartmentDocumentCounts(departments ?? []);
-
-  // No token → bounce to login. Checked after the hooks above so hook
-  // order stays stable across renders (React's rules of hooks).
   if (!token) {
     return <Navigate to="/login" replace />;
   }
@@ -49,8 +46,7 @@ export default function Overview() {
 
   const totalDocuments = tenantDocCount?.total_documents ?? 0;
 
-  // Pair each department with its resolved doc count once its query
-  // settles; falls back to 0 while that specific request is still pending.
+
   const departmentCoverage = (departments ?? []).map((d, i) => {
     const docs = departmentDocQueries[i]?.data?.total_documents ?? 0;
     const share = totalDocuments > 0 ? Math.round((docs / totalDocuments) * 100) : 0;

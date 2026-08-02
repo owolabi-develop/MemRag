@@ -84,9 +84,9 @@ class StoreManager:
         pool = await StoreManager.get_pool()
         async with pool.acquire() as con:
            ## DROP TABLE IF EXISTS 
+            await con.execute("CREATE EXTENSION IF NOT EXISTS vector")
             try:
                 await con.execute(f"DROP TABLE IF EXISTS {table_name}")
-                await con.execute("CREATE EXTENSION vector;")
             except:
                 pass
             if table_name == "WORKFLOW_MEMORY" or table_name == "ENTITY_MEMORY" or table_name == "SUMMARY_MEMORY":
@@ -96,7 +96,7 @@ class StoreManager:
                             content text NOT NULL,
                             tenant_id UUID DEFAULT gen_random_uuid(),
                             metadata JSONB,
-                            embedding vector(768)
+                            embedding vector(1536)
                              );
                         """)
                 await con.execute(f"""
@@ -108,7 +108,7 @@ class StoreManager:
                             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                             content text NOT NULL,
                             metadata JSONB,
-                            embedding vector(768)
+                            embedding vector(1536)
                              );
                         """)
                 await con.execute(f"""
@@ -137,7 +137,7 @@ class StoreManager:
                                     tenant_id UUID DEFAULT gen_random_uuid(),
                                     department_id UUID DEFAULT gen_random_uuid(),
                                     metadata JSONB,
-                                    embedding vector(768)
+                                    embedding vector(1536)
                                      );
                                 """)
                     await con.execute(f"""

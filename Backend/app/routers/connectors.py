@@ -1,6 +1,6 @@
 import uuid
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,Header
 from pydantic import BaseModel
 import json
 from app.models import User, Department, UserRole
@@ -81,7 +81,11 @@ async def connect_google_drive_with_file(
 @router.post("/sync", response_model=list[IngestJob], status_code=status.HTTP_202_ACCEPTED)
 async def start_sync(body: SyncRequest,session: sessionCreator,
     current_user: Annotated[User, Depends(get_current_active_user)],
-    pool: ArqPool,):
+    pool: ArqPool,x_gemini_api_key:Annotated[str | None, Header()]=None):
+    
+    if not x_gemini_api_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="failed to initialized upload, model API-Key is missing. check your settings page for update, then try again.")
+    
     if not body.file_paths:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Select at least one file.")
 
@@ -115,6 +119,7 @@ async def start_sync(body: SyncRequest,session: sessionCreator,
             str(body.department_id),
             str(current_user.tenant_id),
             str(current_user.id),
+            x_gemini_api_key
         )
         jobs.append(IngestJob(job_id=job.job_id, status="queued"))
 
@@ -122,7 +127,7 @@ async def start_sync(body: SyncRequest,session: sessionCreator,
 
 async def sync_connector_file(ctx,connector_id: str,credentials: dict,
     path: str,department_name: str,department_id: str,
-    tenant_id: str,user_id: str,
+    tenant_id: str,user_id: str,x_gemini_api_key:str
 ):
     connector = get_connector(connector_id, credentials)
     await connector.authenticate()
@@ -139,4 +144,5 @@ async def sync_connector_file(ctx,connector_id: str,credentials: dict,
         department_id,
         tenant_id,
         user_id,
+        x_gemini_api_key
     )

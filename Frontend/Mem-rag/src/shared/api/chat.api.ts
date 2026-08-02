@@ -43,7 +43,8 @@ export function sendMessage(
   userQuery: string,
   modelName:string,
   modelApiKey:string,
-  token: string
+  token: string,
+  cohereApi:string
 ): Promise<SendMessageResponse> {
   const body = new URLSearchParams();
   body.set("user_query", userQuery);
@@ -52,7 +53,8 @@ export function sendMessage(
   return apiFormRequest<SendMessageResponse>("/chat/", body, {
     headers: { Authorization: `Bearer ${token}`, 
     "x-gemini-api-key":modelApiKey,
-    "x-gemini-model": modelName
+    "x-gemini-model": modelName,
+    "x-cohere-api-key": cohereApi
   },
   });
 }

@@ -15,6 +15,7 @@ async def setup_codec(conn):
         )
 
 async def init_connection(conn):
+    
     await register_vector(conn)
     await setup_codec(conn)
 
@@ -22,13 +23,11 @@ pool = None
 async def get_db_pool():
     global pool
     if pool is None:
-        pool =  await asyncpg.create_pool(user=os.getenv("DB_USER"),
-                            password=os.getenv("DB_PASSWORD"),
-                            database=os.getenv("DB_NAME"),
-                            host=os.getenv("DB_HOST"),
-                            port=os.getenv("DB_PORT"),
+        DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:5432/{os.getenv('DB_NAME')}"
+        pool =  await asyncpg.create_pool(dsn=DATABASE_URL,
                             init=init_connection
                             )
+        
     print("Connected successfully")
     return pool 
    

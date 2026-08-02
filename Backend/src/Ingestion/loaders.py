@@ -4,7 +4,7 @@ import uuid
 import pymupdf4llm
 import pymupdf
 from langchain_text_splitters import MarkdownTextSplitter
-from src.embeddings.embedder import hug_embedding
+from src.embeddings.embedder import google_embedding_ingest
 from src.connection.connections import get_db_pool
 from app.db import async_session_pool
 from app.models import Document,DocumentStatus,Department
@@ -68,7 +68,7 @@ def _chunk_bbox_and_section(
     return bbox, section_title
 
 
-async def load_document(ctx:dict, filename,content_type,file_byte:bytes,department_name: str, department_id: uuid.UUID, tenant_id: uuid.UUID,current_user):
+async def load_document(ctx:dict, filename,content_type,file_byte:bytes,department_name: str, department_id: uuid.UUID, tenant_id: uuid.UUID,current_user,api_key:str):
     print(f"loading document: {filename} for department: {department_name} and tenant_id: {tenant_id}")
     
     document_id = ""
@@ -178,8 +178,7 @@ async def load_document(ctx:dict, filename,content_type,file_byte:bytes,departme
     pool = await get_db_pool()
     async with pool.acquire() as con:
         for _chunk in all_chunks:
-            emb = await hug_embedding(_chunk["text"])
-            # emb = [round(random.uniform(-1.0, 1.0), 4) for _ in range(768)]
+            emb = await google_embedding_ingest(_chunk["text"],api_key)
             await con.execute(
                 """
                 INSERT INTO SEMANTIC_MEMORY

@@ -113,6 +113,9 @@ in the tool response.
   details (source, department, page) will be displayed separately from your
   response text.
 - strictly avoid returning metadata as source details
+
+# Output format
+  Return clean professional well structured response text without markdown syntax
 """
 
 

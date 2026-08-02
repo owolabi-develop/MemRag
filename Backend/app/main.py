@@ -16,6 +16,8 @@ from arq.jobs import Job, JobStatus, JobResult
 from src.guardrails.guardrails import GuardrailViolation
 from src.exceptions.llm_except import LLMError
 from prometheus_fastapi_instrumentator import Instrumentator
+from dotenv import load_dotenv
+load_dotenv()
 
 
 @asynccontextmanager
@@ -23,11 +25,11 @@ async def lifespan(app: FastAPI):
      await init_db()
      
     # create vector dbs and index
-     await StoreManager().create_db()
-     await register_common_tools()
+    #  await StoreManager().create_db()
+    #  await register_common_tools()
     
      try:
-        pool = await create_pool(RedisSettings.from_dsn(os.getenv("REDIS_CONNECTION")))
+        pool = await create_pool(RedisSettings(host=os.getenv("REDIS_SERVER"),port=6379))
         print("ARQ Redis pool successfully initialized.")
         app.state.arq_pool = pool
      except Exception:
