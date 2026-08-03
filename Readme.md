@@ -6,7 +6,7 @@ Groundly AI is a production-ready, multi-tenant Retrieval-Augmented Generation (
 - Department and role-based document access.
 - Hybrid Retrieval (Vector Search + Full-Text Search).
 - Input and output Guardrails
-- Cross-Encoder reranking for improved retrieval quality.
+- Cohere reranking for improved retrieval quality.
 - AI-powered conversational search using Google Gemini.
 - Semantic response caching with RedisVL.
 - PDF citations with page references.
