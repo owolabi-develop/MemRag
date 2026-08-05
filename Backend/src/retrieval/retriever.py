@@ -7,7 +7,6 @@ from pgvector.sqlalchemy import VECTOR
 import uuid
 import json
 from sqlalchemy.dialects.postgresql import UUID,ARRAY
-from src.prompts.compress_prompt import compress_prompt
 import os
 import os
 import time
@@ -80,7 +79,7 @@ async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], ten
     
     for r in results:
         meta = r['metadata'] if isinstance(r['metadata'], dict) else json.loads(r['metadata'] or '{}')
-        raw_content = await compress_prompt(r["content"],query)
+        raw_content = r["content"]
         
             
         doc_entry = {

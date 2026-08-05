@@ -74,9 +74,12 @@ Groundly AI is a production-ready, multi-tenant Retrieval-Augmented Generation (
 - DropBox
 - Google Drive
 - S3 Digital ocean, Aws
- 
 
-Use Cases
+## Evaluation
+
+Groundly is evaluated using Ragas across a curated dataset. The evaluation report and methodology are available in the evaluation directory.
+
+## Use Cases
 
 Groundly is designed for organizations that need secure AI-powered knowledge retrieval, including:
 
