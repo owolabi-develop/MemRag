@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 from dotenv import load_dotenv
 import os
-load_dotenv(override=True)
+load_dotenv()
 from sqlmodel import SQLModel
 from . models import User, Tenant, Conversation, Department,ChatSession
 

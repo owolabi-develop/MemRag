@@ -38,7 +38,7 @@ import {
 import { useChatUiStore } from "../../shared/store/chatUiStore";
 import { useAuthStore } from "../../shared/store/authStore";
 import type { ChatSessionSummary, Citation, ConversationTurn } from "../../chatsession/type/type";
-import groundly_logo from "../../assets/images/Groundly-logo.png"; // adjust path to match your project structure
+import groundly_logo from "../../assets/images/Groundly-logo.png";
 
 function getInitials(name: string) {
   const parts = name.split(" ").filter(Boolean);
@@ -228,7 +228,7 @@ function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
           )}
         </div>
 
-        {/* Account footer — fixed, never scrolls */}
+
         <div className="flex-shrink-0 border-t border-neutral-200 px-3 py-3">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-neutral-900 text-xs font-medium text-white">
@@ -238,7 +238,7 @@ function ChatSessionList({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
               <p className="truncate text-sm font-medium text-neutral-900">{displayName}</p>
               <p className="truncate text-xs text-neutral-500">{displayEmail}</p>
             </div>
-            {user?.role !== "employee" && (
+            {user?.role !== "employee" && user?.role !== "manager" && (
               <button
                 type="button"
                 onClick={handleBackToDashboard}

@@ -25,8 +25,8 @@ async def lifespan(app: FastAPI):
      await init_db()
      
     # create vector dbs and index
-    #  await StoreManager().create_db()
-    #  await register_common_tools()
+     await StoreManager().create_db()
+     await register_common_tools()
     
      try:
         pool = await create_pool(RedisSettings(host=os.getenv("REDIS_SERVER"),port=6379))

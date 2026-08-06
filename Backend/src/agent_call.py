@@ -114,10 +114,8 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
     else:
         ## track cache miss
         cache_misses.inc()
-        
         query = await query_rewrite_expand(user_query,model,model_api_key) 
-        print("query.......")
-        print(query)
+        
         steps = []
 
         all_retrieved_docs: list[dict] = []
@@ -156,7 +154,7 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
 
         async with asyncio.TaskGroup() as store_msg_enti:
             store_msg_enti.create_task(memory_manager.write_conversational_memory(
-                    query, "user", thread_id, tenant_id, owner_id, session_id,{}
+                    user_query, "user", thread_id, tenant_id, owner_id, session_id,{}
                 )
             )
 

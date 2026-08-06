@@ -25,7 +25,7 @@ export interface RegisteredUser {
   email: string;
   is_active: boolean;
   is_superuser: boolean;
-  role: string;
+  role: string | undefined;
   status: string;
   invited: boolean;
   first_name: string;

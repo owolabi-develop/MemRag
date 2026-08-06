@@ -15,4 +15,9 @@ EOF
 
 COPY . .
 
+COPY entrypoint.sh /code/entrypoint.sh
+RUN chmod +x /code/entrypoint.sh
+
+ENTRYPOINT ["/code/entrypoint.sh"]
+
 CMD ["fastapi", "run", "app/main.py", "--proxy-headers", "--port", "8000"]

@@ -24,7 +24,6 @@ services:
       - "traefik.tcp.services.redis.loadbalancer.server.port=6379"
   db:
     image: pgvector/pgvector:pg17
-    container_name: groundly-db
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=845633
@@ -37,7 +36,6 @@ services:
     restart: always
   
   pgadmin:
-    container_name: pgadmin
     image: dpage/pgadmin4:latest
     environment:
       - PGADMIN_DEFAULT_EMAIL=owolabidevelop84@gmail.com
@@ -72,10 +70,14 @@ services:
     labels:
       - "traefik.http.routers.api.rule=Host(`localhost`) && PathPrefix(`/api/v1`)"
       - "traefik.http.services.api.loadbalancer.server.port=8000"
-  workers:
+  bgworkers:
     build:
       context: backend
+    entrypoint: "" 
     command: arq src.platform.worker.WorkerSettings
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
     depends_on:
       - redis
       - db

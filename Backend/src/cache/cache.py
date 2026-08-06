@@ -9,11 +9,18 @@ load_dotenv()
 
 from redisvl.utils.vectorize import HFTextVectorizer
 from redisvl.extensions.cache.llm import SemanticCache
-from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.query.filter import Tag
+from redis.retry import Retry
+from redis.backoff import ExponentialBackoff
 import redis
+from redis.exceptions import (
+   BusyLoadingError,
+   ConnectionError,
+   TimeoutError
+)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "False"
+os.environ["ORT_DISABLE_AUTOMATIC_DEVICE_DETECTION"] = "1"
 
 REDIS_HOST = os.getenv("REDIS_SERVER")
 REDIS_PORT = os.getenv("REDIS_PORT")
@@ -28,7 +35,10 @@ if not REDIS_HOST or not REDIS_PORT:
 REDIS_PORT = int(REDIS_PORT)
 REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
 
-r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
+retry = Retry(ExponentialBackoff(), 10)
+
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0,
+                retry_on_error=[BusyLoadingError, ConnectionError, TimeoutError],retry=retry)
 
 try:
     r.ping()
@@ -39,13 +49,10 @@ except redis.exceptions.ConnectionError as e:
     ) from e
 
 cache_embed = HFTextVectorizer(
-    model="redis/langcache-embed-v1",
-    cache=EmbeddingsCache(redis_client=r, ttl=3600),
-    device="cpu"
-)
+    model="redis/langcache-embed-v1")
 
 mem_cache = SemanticCache(
-    name="groundly-cache-2",
+    name="groundly-cache-db",
     redis_client=r,
     distance_threshold=0.3,
     ttl=86400,
@@ -67,7 +74,9 @@ async def store_cache(
     metadata: dict
 ):
     print("saving to cache")
-    mem_cache.store(
+    
+    mem_cache.a
+    await mem_cache.astore(
         prompt=prompt,
         response=response,
         ttl=3600,
@@ -93,7 +102,7 @@ async def check_cache(
     thread = Tag("thread_id") == thread_id
     combine_filter = tenant_filter & user_filter & thread
 
-    response = mem_cache.check(
+    response = await mem_cache.acheck(
         prompt=prompt,
         filter_expression=combine_filter,
         return_fields=["response", "metadata"]
