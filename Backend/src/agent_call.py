@@ -106,7 +106,8 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
     
     thread_id = str(owner_id)
     if results := await check_cache(user_query,thread_id,owner_id,tenant_id):
-        response = {"answer":results[0]['response'],"citations":results[0]['metadata']['citations']}
+        response = {"answer":results['response'],
+                    "citations":results['citations']}
         final_answer = response
          ## track cache hit
         cache_hit.inc()
@@ -254,7 +255,7 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
         resolved = resolve_citations(final.validated_output, all_retrieved_docs)
         
         # save data to cache
-        await  store_cache(user_query,thread_id,final_answer,owner_id,tenant_id,{"citations": resolved["citations"]})
+        await  store_cache(user_query,thread_id,final_answer,owner_id,tenant_id,resolved["citations"])
         
         # track agent response time
         

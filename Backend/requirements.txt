@@ -889,3 +889,4 @@ zipp==4.1.0
 zstandard==0.25.0
     # via langsmith
 sentence-transformers
+langcache>=0.13.0
