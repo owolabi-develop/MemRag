@@ -11,7 +11,7 @@ from google.genai import errors
 from src.exceptions.llm_except import LLMError,LLMRateLimitError,AuthenticationError,ResourceExhausted,InvalidArgumentError,UnavailableError
 from src.connection.connections import get_db_pool
 from src.memory.memory_manager import MemoryManager
-from src.guardrails.guardrails import output_guard
+from src.guardrails.guardrails import output_guard,input_guard,PIIDetectedError,ToxicContentError,DetectJailbreakContentError
 from starlette.concurrency import run_in_threadpool
 from src.tools.tool import (
     TOOL_BY_NAME,
@@ -105,6 +105,27 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
     start = time.perf_counter()
     
     thread_id = str(owner_id)
+    try:
+        
+        await run_in_threadpool(input_guard().validate,user_query)
+    except (PIIDetectedError,ToxicContentError,DetectJailbreakContentError) as exec:
+        async with asyncio.TaskGroup() as add_quard_error:
+           guard_res = add_quard_error.create_task(
+            memory_manager.write_conversational_memory(
+            exec.user_message,
+            "assistant",
+            thread_id,
+            tenant_id,
+            owner_id,
+            session_id,
+            metadata={"citations": []},)
+           )
+           user_msg = add_quard_error.create_task(
+               memory_manager.write_conversational_memory(
+                    user_query, "user", thread_id, tenant_id, owner_id, session_id,{}))
+
+        raise
+        
     if results := await check_cache(user_query,thread_id,owner_id,tenant_id):
         response = {"answer":results['response'],
                     "citations":results['citations']}

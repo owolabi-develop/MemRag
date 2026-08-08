@@ -35,6 +35,7 @@ const NAV_ITEMS = [
     to: "/chat",
     label: "chat",
     icon: MessageSquare,
+    state: { forceNewSession: true },
   },
 
   {
@@ -94,11 +95,12 @@ export default function TenantDashboard() {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-0.5 px-2 py-4 md:px-3">
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+          {NAV_ITEMS.map(({ to, label, icon: Icon, end, state }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
+              state={state}
               title={label}
               className={({ isActive }) =>
                 `flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition-colors md:justify-start md:gap-2.5 ${

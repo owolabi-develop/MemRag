@@ -12,7 +12,6 @@ from app.utils.s3_storage import  build_object_key, upload_file_to_s3, SPACES_BU
 from fastapi import Depends, HTTPException,status
 from app.metrics.metrics import document_upload_duration
 import random
-random.seed(42)
 import time
 
 def _make_doc_id(content: bytes) -> str:

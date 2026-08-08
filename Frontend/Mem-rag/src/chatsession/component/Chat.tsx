@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -331,8 +331,8 @@ function renderAnswerWithCitations(
   let key = 0;
 
   while ((match = markerRegex.exec(text)) !== null) {
-    const markerText = match[0]; // e.g. "[p.9]"
-    const markerKey = markerText.slice(1, -1); // "p.9"
+    const markerText = match[0];
+    const markerKey = markerText.slice(1, -1);
 
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
@@ -606,28 +606,91 @@ function ConversationView({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const departmentsQuery = useDepartmentsQuery();
   const hasDepartment = (departmentsQuery.data?.length ?? 0) > 0;
 
+  // Reuses the same query as ChatSessionList (deduped by React Query,
+  // no extra network call) so this component can decide what to do
+  // when the user lands here with no active session selected.
+  const sessionsQuery = useSessionsQuery();
+
   const sessionQuery = useSessionQuery(activeSessionId);
   const sendMessageMutation = useSendMessageMutation(activeSessionId);
   const feedbackMutation = useFeedbackMutation(activeSessionId);
   const createSessionMutation = useCreateSessionMutation();
 
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Set by the dashboard sidebar's "Chat" link when it navigates here --
+  // signals "start fresh" regardless of whatever session is already
+  // active in the store from a previous visit, and regardless of whether
+  // the user has zero or many existing sessions.
+  const forceNewSession = Boolean(
+    (location.state as { forceNewSession?: boolean } | null)?.forceNewSession
+  );
+
   const [draft, setDraft] = useState("");
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const hasAutoCreated = useRef(false);
+  const hasInitialized = useRef(false);
 
   const conversations = sessionQuery.data?.conversations ?? [];
 
+  // Runs once per visit, after departments have loaded, whenever there's
+  // no active session selected -- OR unconditionally when the sidebar's
+  // "Chat" link explicitly asked for a fresh session via forceNewSession:
+  //   - forceNewSession -> always create a brand-new session, even if one
+  //     is already active in the store or the user has prior sessions.
+  //   - No existing sessions at all -> auto-create one, so a brand-new
+  //     user lands straight into a conversation with no manual click.
+  //   - Existing sessions -> open the most recent one instead of
+  //     spawning a fresh empty session every time this page loads.
   useEffect(() => {
-    if (hasAutoCreated.current) return;
+    if (hasInitialized.current) return;
     if (!hasDepartment) return;
-    if (activeSessionId) return;
+    if (departmentsQuery.isLoading) return;
 
-    hasAutoCreated.current = true;
-    createSessionMutation.mutate(undefined, {
-      onSuccess: (session) => setActiveSessionId(session.id),
-    });
-  }, [hasDepartment, activeSessionId, createSessionMutation, setActiveSessionId]);
+    if (forceNewSession) {
+      hasInitialized.current = true;
+      createSessionMutation.mutate(undefined, {
+        onSuccess: (session) => {
+          setActiveSessionId(session.id);
+          // No need to invalidate the sessions list here --
+          // useCreateSessionMutation's onSuccess already prepends the new
+          // session directly into the ["chat-sessions"] cache, so
+          // ChatSessionList picks it up (and highlights it, since
+          // activeSessionId is set above) on the next render.
+          navigate(location.pathname, { replace: true, state: {} });
+        },
+      });
+      return;
+    }
+
+    if (activeSessionId) return;
+    if (sessionsQuery.isLoading) return;
+
+    hasInitialized.current = true;
+
+    const existingSessions = sessionsQuery.data ?? [];
+
+    if (existingSessions.length > 0) {
+      // useCreateSessionMutation prepends new sessions to the front of
+      // this list, so the first entry is always the most recent one.
+      setActiveSessionId(existingSessions[0].id);
+    } else {
+      createSessionMutation.mutate(undefined, {
+        onSuccess: (session) => setActiveSessionId(session.id),
+      });
+    }
+  }, [
+    hasDepartment,
+    activeSessionId,
+    departmentsQuery.isLoading,
+    sessionsQuery.isLoading,
+    sessionsQuery.data,
+    createSessionMutation,
+    setActiveSessionId,
+    forceNewSession,
+    location.pathname,
+    navigate,
+  ]);
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -890,8 +953,8 @@ function CitationDrawer() {
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-1">
-            <a
-              href={activeCitation.filePath}
+            
+              <a href={activeCitation.filePath}
               target="_blank"
               rel="noreferrer"
               className="flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"

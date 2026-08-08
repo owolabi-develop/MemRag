@@ -26,11 +26,14 @@ tenant_id: uuid.UUID):
              search_strategies=[SearchStrategy.EXACT, SearchStrategy.SEMANTIC],
              similarity_threshold=0.9,
         )
-    citations = json.loads(result.data[0].attributes['citations'])
-    response = result.data[0].response
-    
-
-    return {"citations":citations,"response":response}
+    if result.data:
+        print("cache hit")
+        citations = json.loads(result.data[0].attributes['metadata'])
+        response = result.data[0].response
+        return {"citations":citations,"response":response}
+    print("cache miss")
+    return None
+        
 
 
 async def store_cache(prompt: str,thread_id: str,response: str,
@@ -48,7 +51,7 @@ async def store_cache(prompt: str,thread_id: str,response: str,
         await lc.set_async(
             prompt=prompt,
             response=response,
-            attributes={"tenant_id": str(tenant_id), "user_id":str(user_id), "thread_id": thread_id,"citations":citations_meta},
+            attributes={"tenant_id": str(tenant_id), "user_id":str(user_id), "thread_id": thread_id,"metadata":citations_meta},
         )
     print("saving to cache")
 

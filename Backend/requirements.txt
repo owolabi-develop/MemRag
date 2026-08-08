@@ -236,6 +236,7 @@ guardrails-ai-valid-length==0.1.0
     # via backend
 guardrails-hub-types==0.0.4
     # via guardrails-ai
+guardrails-ai-prompt-injection-detector>=0.0.2
 h11==0.16.0
     # via
     #   httpcore
@@ -890,3 +891,4 @@ zstandard==0.25.0
     # via langsmith
 sentence-transformers
 langcache>=0.13.0
+

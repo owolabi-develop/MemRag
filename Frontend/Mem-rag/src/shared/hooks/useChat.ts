@@ -75,13 +75,12 @@ export function useCreateSessionMutation() {
   });
 }
 
-
 function mapCitations(raw: RawCitation[] | undefined): Citation[] {
   return (raw ?? []).map((c, idx) => ({
     id: `${c.document_id ?? c.source}-${c.page}-${idx}`,
     documentName: c.source,
     page: c.page,
-    filePath: `/documents/${c.source}`, 
+    filePath: `/documents/${c.source}`,
     snippet: "",
     documentId: c.document_id ?? "",
     marker: c.marker,
@@ -126,15 +125,17 @@ export function useSessionQuery(sessionId: string | null) {
       return { title: data.title, conversations: toConversationTurns(data.conversations) };
     },
     enabled: Boolean(accessToken && sessionId),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
   });
 }
-
 
 export function useSendMessageMutation(sessionId: string | null) {
   const queryClient = useQueryClient();
   const accessToken = useAuthStore((s) => s.accessToken);
   const apiKey = useGeminiSettingsStore((s) => s.apiKey);
-   const cohereApi = useCohereSettingsStore((s) => s.cohere);
+  const cohereApi = useCohereSettingsStore((s) => s.cohere);
   const model = useGeminiSettingsStore((s) => s.model);
 
   return useMutation<
@@ -147,7 +148,14 @@ export function useSendMessageMutation(sessionId: string | null) {
       if (!accessToken) throw new ApiError(401, "Not authenticated");
       if (!sessionId) throw new ApiError(400, "No session selected");
 
-      const data = await sendMessage(sessionId, userQuery,model,apiKey, accessToken,cohereApi);
+      const data = await sendMessage(
+        sessionId,
+        userQuery,
+        model,
+        apiKey ?? "",
+        accessToken,
+        cohereApi ?? ""
+      );
       return {
         answer: data.response.answer,
         citations: mapCitations(data.response.citations),
@@ -172,22 +180,61 @@ export function useSendMessageMutation(sessionId: string | null) {
 
       return { tempId };
     },
-    onSuccess: (result, _userQuery, context) => {
+    onSuccess: (result, userQuery, context) => {
       queryClient.setQueryData<SessionQueryData | undefined>(sessionQueryKey(sessionId), (old) => {
-        if (!old) return old;
+        if (!old) {
+          return {
+            title: "New chat",
+            conversations: [
+              {
+                id: context?.tempId ?? crypto.randomUUID(),
+                user_query: userQuery,
+                ai_response: result.answer,
+                citations: result.citations,
+                feedback: null,
+                feedbackId: null,
+              },
+            ],
+          };
+        }
+
+        const hasMatch = old.conversations.some((t) => t.id === context?.tempId);
+
+        if (hasMatch) {
+          return {
+            ...old,
+            conversations: old.conversations.map((t) =>
+              t.id === context?.tempId
+                ? { ...t, ai_response: result.answer, citations: result.citations }
+                : t
+            ),
+          };
+        }
+
         return {
           ...old,
-          conversations: old.conversations.map((t) =>
-            t.id === context?.tempId ? { ...t, ai_response: result.answer, citations: result.citations } : t
-          ),
+          conversations: [
+            ...old.conversations,
+            {
+              id: context?.tempId ?? crypto.randomUUID(),
+              user_query: userQuery,
+              ai_response: result.answer,
+              citations: result.citations,
+              feedback: null,
+              feedbackId: null,
+            },
+          ],
         };
       });
 
-      queryClient.invalidateQueries({ queryKey: sessionQueryKey(sessionId) });
+      queryClient.invalidateQueries({
+        queryKey: sessionQueryKey(sessionId),
+        refetchType: "none",
+      });
+
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
     },
     onError: (_err, _userQuery, context) => {
-  
       queryClient.setQueryData<SessionQueryData | undefined>(sessionQueryKey(sessionId), (old) => {
         if (!old) return old;
         return {

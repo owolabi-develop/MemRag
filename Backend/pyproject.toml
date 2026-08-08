@@ -19,6 +19,7 @@ dependencies = [
     "guardrails-ai-gibberish-text>=0.0.2",
     "guardrails-ai-llamaguard-7b>=0.1.0",
     "guardrails-ai-profanity-free>=0.1.0",
+    "guardrails-ai-prompt-injection-detector>=0.0.2",
     "guardrails-ai-regex-match>=0.1.0",
     "guardrails-ai-restrict-to-topic>=0.1.0",
     "guardrails-ai-toxic-language>=0.0.2",

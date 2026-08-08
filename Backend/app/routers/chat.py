@@ -7,7 +7,7 @@ from typing import Annotated
 from app.security import get_current_active_user
 from src.agent_call import call_agent
 import uuid
-from src.guardrails.guardrails import GuardrailViolation,input_guard,output_guard,PIIDetectedError,GibberishContentError,ToxicContentError,DetectJailbreakContentError
+from src.guardrails.guardrails import GuardrailViolation,input_guard,output_guard,PIIDetectedError,ToxicContentError,DetectJailbreakContentError
 from starlette.concurrency import run_in_threadpool
 from src.utils.helper import context_api_key,context_cohere_api_key
 router = APIRouter(prefix="/chat",
@@ -44,10 +44,10 @@ async def chatAgent(user_query: Annotated[str, Form()],session_id: Annotated[uui
 
     user_dpt = await get_current_user_dpt(current_user.departments)
     
-    try:
-        await run_in_threadpool(input_guard().validate,user_query)
-    except (PIIDetectedError,ToxicContentError) as exec:
-        raise exec
+    # try:
+    #     await run_in_threadpool(input_guard().validate,user_query)
+    # except (PIIDetectedError,ToxicContentError,DetectJailbreakContentError) as exec:
+    #     raise exec
     token = context_api_key.set(x_gemini_api_key)
     rank_token = context_cohere_api_key.set(x_cohere_api_key)
     

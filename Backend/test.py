@@ -29,14 +29,14 @@ async def main():
         
         ## check
         result = await lc.search_async(
-            prompt="who is the presdient of nigeria?",
+            prompt="how is money made",
             attributes={"tenant_id": "tenant1", "user_id": "user1", "thread_id": "thread1"},
              search_strategies=[SearchStrategy.EXACT, SearchStrategy.SEMANTIC],
              similarity_threshold=0.9,
         )
-        
-        print(json.loads(result.data[0].attributes['metadata'])['source'])  # Should print the cached response and metadata
-        print(result.data[0].response)
+        if result.data:
+            print(json.loads(result.data[0].attributes['metadata'])['source'])  # Should print the cached response and metadata
+            print(result.data[0].response)
     
     
   
