@@ -11,6 +11,7 @@ from app.models import Document,DocumentStatus,Department
 from app.utils.s3_storage import  build_object_key, upload_file_to_s3, SPACES_BUCKET_NAME
 from fastapi import Depends, HTTPException,status
 from app.metrics.metrics import document_upload_duration
+from src.cache.cache import clear_cache
 import random
 import time
 
@@ -200,5 +201,6 @@ async def load_document(ctx:dict, filename,content_type,file_byte:bytes,departme
     document_upload_duration.observe(end_time - start_time)
 
     print(f"all {filename} documents ingested to {department_name} successfully")
+    await clear_cache()
     
 

@@ -12,6 +12,6 @@ load_dotenv()
 
 class WorkerSettings:
     functions = [load_document,sync_connector_file]
-    redis_settings = RedisSettings(host=os.getenv("REDIS_SERVER"),port=6379)
+    redis_settings = RedisSettings(host=os.getenv("REDIS_SERVER"),port=10000,password=os.getenv("REDIS_PASSWORD"),ssl=True)
     max_jobs = 10
     job_timeout = 700 

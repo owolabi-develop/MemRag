@@ -12,5 +12,11 @@ guardrails configure \
   --enable-metrics \
   --enable-remote-inferencing
 
-echo "==> Guardrails configuration complete. Starting FastAPI..."
-exec "$@"
+# Check if this container instance is explicitly meant to be the worker
+if [ "$CONTAINER_ROLE" = "worker" ]; then
+    echo "==> Guardrails configuration complete. Starting Arq Worker..."
+    exec arq src.platform.worker.WorkerSettings
+else
+    echo "==> Guardrails configuration complete. Starting FastAPI..."
+    exec "$@"
+fi

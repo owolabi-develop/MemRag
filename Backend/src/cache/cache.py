@@ -28,7 +28,7 @@ tenant_id: uuid.UUID):
         )
     if result.data:
         print("cache hit")
-        citations = json.loads(result.data[0].attributes['metadata'])
+        citations = result.data[0].attributes['metadata']
         response = result.data[0].response
         return {"citations":citations,"response":response}
     print("cache miss")
@@ -37,7 +37,7 @@ tenant_id: uuid.UUID):
 
 
 async def store_cache(prompt: str,thread_id: str,response: str,
-    user_id: uuid.UUID,tenant_id: uuid.UUID, citation_data: list[dict]):
+    user_id: uuid.UUID,tenant_id: uuid.UUID, citation_data:uuid.UUID):
     print("saving to cache")
     
     async with LangCache(
@@ -47,12 +47,28 @@ async def store_cache(prompt: str,thread_id: str,response: str,
         retry_config=RetryConfig("backoff", BackoffStrategy(1, 50, 1.1, 100), False),
        
     ) as lc:
-        citations_meta = json.dumps(citation_data)
         await lc.set_async(
             prompt=prompt,
             response=response,
-            attributes={"tenant_id": str(tenant_id), "user_id":str(user_id), "thread_id": thread_id,"metadata":citations_meta},
+            attributes={"tenant_id": str(tenant_id), "user_id":str(user_id), "thread_id": thread_id,"metadata":str(citation_data)},
+            ttl_millis=86400
         )
     print("saving to cache")
+    
+
+
+async def clear_cache():
+    print("flushing... cache")
+    async with LangCache(
+        server_url=os.getenv("LANGCACHE_API_URL"),
+        api_key=os.getenv("LANGCACHE_API_KEY"),
+        cache_id=os.getenv("LANGCACHE_CACHE_ID"),
+        retry_config=RetryConfig("backoff", BackoffStrategy(1, 50, 1.1, 100), False),
+       
+    ) as lc:
+        await lc.flush_async()
+    print("cache flushed")
+   
+    
 
 

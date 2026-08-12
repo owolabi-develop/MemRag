@@ -127,8 +127,10 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
         raise
         
     if results := await check_cache(user_query,thread_id,owner_id,tenant_id):
-        response = {"answer":results['response'],
-                    "citations":results['citations']}
+        conversation_id = uuid.UUID(results["citations"])
+        citations = await memory_manager.get_conversation_citations(conversation_id)
+        response = {"answer":results["response"],
+                    "citations":citations}
         final_answer = response
          ## track cache hit
         cache_hit.inc()
@@ -275,14 +277,13 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
 
         resolved = resolve_citations(final.validated_output, all_retrieved_docs)
         
-        # save data to cache
-        await  store_cache(user_query,thread_id,final_answer,owner_id,tenant_id,resolved["citations"])
+       
         
         # track agent response time
         
         agent_response_duration.observe(time.perf_counter() - start)
         
-        await memory_manager.write_conversational_memory(
+        conversation_id = await memory_manager.write_conversational_memory(
             final.validated_output,
             "assistant",
             thread_id,
@@ -291,5 +292,8 @@ async def call_agent(user_query: str, department_id: list[uuid.UUID],
             session_id,
             metadata={"citations": resolved["citations"]},
         )
+        
+         # save data to cache
+        await  store_cache(user_query,thread_id,final_answer,owner_id,tenant_id,conversation_id)
 
         return resolved

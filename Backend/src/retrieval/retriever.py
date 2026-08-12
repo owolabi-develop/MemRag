@@ -90,7 +90,8 @@ async def hybrid_search_retriever(query:str, department_ids:list[uuid.UUID], ten
                 "section_title": meta.get("section_title"),
                 "page": meta.get('page', 'Unknown'),
                 "department": meta.get('department', 'Unknown'),
-                "document_id": meta.get('document_id', 'Unknown')
+                "document_id": meta.get('document_id', 'Unknown'),
+                "timestamp":meta.get('timestamp',"")
             }
         }
         compressed_docs.append(doc_entry)

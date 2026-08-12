@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 
-load_dotenv(override=True)
+load_dotenv()
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "email-templates"
 

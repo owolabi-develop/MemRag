@@ -1,7 +1,6 @@
 from guardrails import Guard,AsyncGuard
 from guardrails_ai.llamaguard_7b import LlamaGuard7B
 from guardrails_ai.detect_pii import DetectPII
-from guardrails_ai.detect_jailbreak import DetectJailbreak
 import os
 
 os.environ['GEMINI_API_KEY'] = os.getenv("GOOGLE_GEMINI_API_KEY")
@@ -40,9 +39,8 @@ def toxic_on_fail(value, fail_result):
 
 
 def input_guard():
-    pii_entities = ["CREDIT_CARD","CRYPTO","DATE_TIME","EMAIL_ADDRESS",
-    "IBAN_CODE","IP_ADDRESS","NRP","MEDICAL_LICENSE","US_BANK_NUMBER","US_DRIVER_LICENSE","US_ITIN","US_PASSPORT","US_SSN","UK_NHS","ES_NIF","ES_NIE","IT_FISCAL_CODE","IT_DRIVER_LICENSE","IT_VAT_CODE","IT_PASSPORT","IT_IDENTITY_CARD","PL_PESEL","SG_NRIC_FIN","SG_UEN","AU_ABN","AU_ACN","AU_TFN","AU_MEDICARE","IN_PAN","IN_AADHAAR","IN_VEHICLE_REGISTRATION",
-    "IN_VOTER","IN_PASSPORT","FI_PERSONAL_IDENTITY_CODE"]
+    pii_entities = ["CREDIT_CARD","CRYPTO","EMAIL_ADDRESS",
+    "IBAN_CODE","IP_ADDRESS","NRP","MEDICAL_LICENSE","US_BANK_NUMBER","ES_NIE","IT_FISCAL_CODE","IT_DRIVER_LICENSE","IT_VAT_CODE","IT_PASSPORT","PL_PESEL","SG_NRIC_FIN","SG_UEN","AU_ABN","AU_ACN","AU_TFN","AU_MEDICARE"]
 
     return guard.use(
      DetectPII(pii_entities=pii_entities,on_fail=pii_on_fail),

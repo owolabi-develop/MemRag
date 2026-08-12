@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
      await register_common_tools()
     
      try:
-        pool = await create_pool(RedisSettings(host=os.getenv("REDIS_SERVER"),port=6379))
+        pool = await create_pool(RedisSettings(host=os.getenv("REDIS_SERVER"),port=10000,password=os.getenv("REDIS_PASSWORD"),ssl=True))
         print("ARQ Redis pool successfully initialized.")
         app.state.arq_pool = pool
      except Exception:
@@ -81,7 +81,10 @@ origins = [
     "http://localhost:5173",
     "http://localhost",
     "http://localhost:8080",
+    "https://groundly.gentlemoss-becc6120.eastus.azurecontainerapps.io",
+    "https://groundly.jo3.org"
 ]
+
 
 app.add_middleware(
     CORSMiddleware,

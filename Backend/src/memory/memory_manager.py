@@ -102,6 +102,20 @@ class MemoryManager:
             await session.commit()
             record_id = await session.exec(select(Conversation).where(Conversation.thread_id == thread_id))
         return record_id.first().id   
+    
+    async def get_conversation_citations(self,conversation_id: uuid.UUID):
+        async with async_session_pool() as session:
+            result = await session.exec(
+                select(Conversation).where(
+                    Conversation.id == conversation_id
+                )
+            )
+
+            conversation = result.first()
+
+            if not conversation:
+                return []
+            return conversation.con_metadata.get("citations") or []
         
     
     async def read_conversational_memory(self,thread_id: str, tenant_id: uuid.UUID,owner_id:uuid.UUID,session_id:uuid.UUID, limit: int = 10) -> str:
